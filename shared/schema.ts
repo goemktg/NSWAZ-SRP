@@ -24,6 +24,8 @@ export const userRoles = pgTable("user_roles", {
 export const srpRequests = pgTable("srp_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
+  victimCharacterId: integer("victim_character_id"), // EVE character ID who lost the ship
+  victimCharacterName: text("victim_character_name"),
   shipTypeId: integer("ship_type_id").notNull(),
   shipTypeName: text("ship_type_name"),
   killmailUrl: text("killmail_url").notNull(),
@@ -45,6 +47,7 @@ export const srpRequests = pgTable("srp_requests", {
   index("idx_srp_requests_user_id").on(table.userId),
   index("idx_srp_requests_status").on(table.status),
   index("idx_srp_requests_created_at").on(table.createdAt),
+  index("idx_srp_requests_victim_character").on(table.victimCharacterId),
 ]);
 
 export const userRolesRelations = relations(userRoles, ({ }) => ({}));

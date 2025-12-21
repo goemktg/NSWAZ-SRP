@@ -2,10 +2,14 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./eveAuth";
-import { insertSrpRequestSchema, srpCalculateSchema, type SrpCalculateResponse } from "@shared/schema";
+import { insertSrpRequestSchema, srpCalculateSchema, type SrpCalculateResponse, userCharacters } from "@shared/schema";
 import { z } from "zod";
 import { shipCatalogService } from "./services/shipCatalog";
 import { srpLimitsService } from "./services/srpLimits";
+import { seatApiService } from "./services/seatApi";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import { users } from "@shared/models/auth";
 
 // SRP Policy constants
 const SRP_POLICY = {
@@ -63,6 +67,72 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting user role:", error);
       res.status(500).json({ message: "Failed to get user role" });
+    }
+  });
+
+  // Get user's characters
+  app.get("/api/user/characters", isAuthenticated, async (req: Request, res) => {
+    try {
+      const userId = req.session.userId!;
+      
+      const characters = await db.select()
+        .from(userCharacters)
+        .where(eq(userCharacters.userId, userId));
+      
+      res.json(characters);
+    } catch (error) {
+      console.error("Error getting user characters:", error);
+      res.status(500).json({ message: "Failed to get user characters" });
+    }
+  });
+
+  // Sync user's characters from SeAT API
+  app.post("/api/user/characters/sync", isAuthenticated, async (req: Request, res) => {
+    try {
+      const userId = req.session.userId!;
+      const characterId = req.session.characterId!;
+      
+      await seatApiService.syncUserCharacters(userId, characterId);
+      
+      const characters = await db.select()
+        .from(userCharacters)
+        .where(eq(userCharacters.userId, userId));
+      
+      res.json({ 
+        message: "캐릭터 동기화 완료",
+        characters 
+      });
+    } catch (error) {
+      console.error("Error syncing user characters:", error);
+      res.status(500).json({ message: "캐릭터 동기화에 실패했습니다" });
+    }
+  });
+
+  // Check if character belongs to user
+  app.get("/api/user/characters/:characterId/verify", isAuthenticated, async (req: Request, res) => {
+    try {
+      const userId = req.session.userId!;
+      const characterId = parseInt(req.params.characterId, 10);
+      
+      if (isNaN(characterId)) {
+        return res.status(400).json({ message: "Invalid character ID" });
+      }
+      
+      // Check if character belongs to user
+      const [char] = await db.select()
+        .from(userCharacters)
+        .where(eq(userCharacters.characterId, characterId))
+        .limit(1);
+      
+      const isOwned = char && char.userId === userId;
+      
+      res.json({ 
+        isOwned,
+        characterName: char?.characterName
+      });
+    } catch (error) {
+      console.error("Error verifying character ownership:", error);
+      res.status(500).json({ message: "Failed to verify character ownership" });
     }
   });
 
@@ -196,6 +266,24 @@ export async function registerRoutes(
 
       const esiData = await esiResponse.json() as ESIKillmailData;
       const shipTypeId = esiData.victim.ship_type_id;
+      const victimCharacterId = esiData.victim.character_id;
+
+      // Check if victim character belongs to user
+      const userId = req.session.userId!;
+      let isOwnedCharacter = false;
+      let victimCharacterName: string | undefined;
+
+      if (victimCharacterId) {
+        const [char] = await db.select()
+          .from(userCharacters)
+          .where(eq(userCharacters.characterId, victimCharacterId))
+          .limit(1);
+        
+        if (char && char.userId === userId) {
+          isOwnedCharacter = true;
+          victimCharacterName = char.characterName;
+        }
+      }
 
       // Get ship info from our catalog
       const ship = shipCatalogService.getShipByTypeId(shipTypeId);
@@ -208,7 +296,9 @@ export async function registerRoutes(
         groupName: ship?.groupName,
         iskValue: totalValue, // Full ISK value
         killmailTime: esiData.killmail_time,
-        victimCharacterId: esiData.victim.character_id,
+        victimCharacterId,
+        victimCharacterName,
+        isOwnedCharacter,
       });
     } catch (error) {
       console.error("Error parsing killmail:", error);
@@ -355,6 +445,21 @@ export async function registerRoutes(
       const userId = req.session.userId!;
       
       const validated = insertSrpRequestSchema.parse(req.body);
+      
+      // Validate character ownership if victimCharacterId is provided
+      if (validated.victimCharacterId) {
+        const [char] = await db.select()
+          .from(userCharacters)
+          .where(eq(userCharacters.characterId, validated.victimCharacterId))
+          .limit(1);
+        
+        if (!char || char.userId !== userId) {
+          return res.status(403).json({ 
+            message: "이 킬메일은 본인 소유의 캐릭터가 아닙니다. 캐릭터를 동기화하거나 본인의 로스만 SRP 신청 가능합니다." 
+          });
+        }
+      }
+      
       const request = await storage.createSrpRequest(userId, validated);
       res.status(201).json(request);
     } catch (error) {

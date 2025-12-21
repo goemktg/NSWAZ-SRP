@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
+import { seatApiService } from "./services/seatApi";
 
 const EVE_SSO_AUTH_URL = "https://login.eveonline.com/v2/oauth/authorize";
 const EVE_SSO_TOKEN_URL = "https://login.eveonline.com/v2/oauth/token";
@@ -216,6 +217,11 @@ export async function setupAuth(app: Express) {
       req.session.accessToken = tokens.access_token;
       req.session.refreshToken = tokens.refresh_token;
       req.session.tokenExpiry = Date.now() + tokens.expires_in * 1000;
+
+      // Sync user's characters from SeAT API (async, don't block login)
+      seatApiService.syncUserCharacters(userId, characterInfo.CharacterID).catch(err => {
+        console.error("Failed to sync characters from SeAT:", err);
+      });
 
       res.redirect("/");
     } catch (error) {

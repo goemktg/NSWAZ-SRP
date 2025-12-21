@@ -110,8 +110,10 @@ export class SeatApiService {
           .limit(1);
 
         if (existingChar.length > 0) {
+          // Update character data AND userId (reassign to current user based on SeAT)
           await db.update(userCharacters)
             .set({
+              userId, // Always update userId to current user (SeAT is source of truth)
               characterName: char.name,
               corporationId: char.corporation_id,
               corporationName: char.corporation?.name,

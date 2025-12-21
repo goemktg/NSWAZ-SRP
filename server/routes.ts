@@ -446,18 +446,23 @@ export async function registerRoutes(
       
       const validated = insertSrpRequestSchema.parse(req.body);
       
-      // Validate character ownership if victimCharacterId is provided
-      if (validated.victimCharacterId) {
-        const [char] = await db.select()
-          .from(userCharacters)
-          .where(eq(userCharacters.characterId, validated.victimCharacterId))
-          .limit(1);
-        
-        if (!char || char.userId !== userId) {
-          return res.status(403).json({ 
-            message: "이 킬메일은 본인 소유의 캐릭터가 아닙니다. 캐릭터를 동기화하거나 본인의 로스만 SRP 신청 가능합니다." 
-          });
-        }
+      // Require victimCharacterId for ownership validation
+      if (!validated.victimCharacterId) {
+        return res.status(400).json({ 
+          message: "킬메일에서 피해자 캐릭터 정보를 찾을 수 없습니다. 올바른 킬메일 URL을 사용해주세요." 
+        });
+      }
+      
+      // Validate character ownership - must be one of the user's characters
+      const [char] = await db.select()
+        .from(userCharacters)
+        .where(eq(userCharacters.characterId, validated.victimCharacterId))
+        .limit(1);
+      
+      if (!char || char.userId !== userId) {
+        return res.status(403).json({ 
+          message: "이 킬메일은 본인 소유의 캐릭터가 아닙니다. 캐릭터를 동기화하거나 본인의 로스만 SRP 신청 가능합니다." 
+        });
       }
       
       const request = await storage.createSrpRequest(userId, validated);

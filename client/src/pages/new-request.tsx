@@ -39,6 +39,8 @@ interface ParsedKillmail {
   iskValue: number;
   killmailTime: string;
   victimCharacterId?: number;
+  victimCharacterName?: string;
+  isOwnedCharacter?: boolean;
 }
 
 const formSchema = z.object({
@@ -138,6 +140,8 @@ export default function NewRequest() {
         fleetName: data.operationType === "fleet" ? data.fleetName : null,
         fcName: data.operationType === "fleet" ? data.fcName : null,
         lossDescription: data.lossDescription,
+        victimCharacterId: parsedData.victimCharacterId,
+        victimCharacterName: parsedData.victimCharacterName,
       });
     },
     onSuccess: () => {
@@ -336,9 +340,29 @@ export default function NewRequest() {
                           {new Date(parsedData.killmailTime).toLocaleString("ko-KR")}
                         </span>
                       </div>
+                      {parsedData.victimCharacterName && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">피해자:</span>
+                          <span data-testid="text-victim-character">
+                            {parsedData.victimCharacterName}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
+              )}
+
+              {parsedData && parsedData.isOwnedCharacter === false && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive" data-testid="warning-not-owned-character">
+                  <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
+                  <div className="text-sm">
+                    <div className="font-medium">본인 캐릭터가 아닙니다</div>
+                    <div className="text-muted-foreground">
+                      이 킬메일은 본인 소유의 캐릭터 로스가 아닙니다. 캐릭터 동기화가 필요하거나, 본인의 로스만 SRP 신청이 가능합니다.
+                    </div>
+                  </div>
+                </div>
               )}
 
               <FormField

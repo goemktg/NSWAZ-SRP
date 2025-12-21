@@ -41,11 +41,12 @@ The system features a dashboard with statistics, request submission forms, reque
 - **Token Refresh**: Automatic access token refresh using refresh tokens
 
 ### Key Database Tables
-- `users` - User accounts with EVE character data (characterId, characterName, corporationId, allianceId)
+- `users` - User accounts with EVE character data (characterId, characterName, corporationId, allianceId, seatUserId)
+- `user_characters` - Multiple EVE characters linked to a single user account (synced from SeAT API)
 - `sessions` - Session storage for authentication
 - `user_roles` - Role assignments (member, fc, admin)
 - `ship_types` - Ship definitions with categories and base ISK values
-- `srp_requests` - SRP request submissions with status tracking
+- `srp_requests` - SRP request submissions with status tracking (includes victimCharacterId for ownership validation)
 
 ### Role-Based Access Control
 - **member**: Can submit requests and view their own requests
@@ -61,12 +62,14 @@ The system features a dashboard with statistics, request submission forms, reque
 ### Third-Party APIs
 - **EVE Online SSO**: Character authentication (https://login.eveonline.com)
 - **zKillboard/EVE ESI**: Killmail URL validation for SRP requests
+- **SeAT API**: Character synchronization (https://seat.nisuwaz.com/api/v2)
 
 ### Required Environment Variables
 - `EVE_CLIENT_ID`: EVE Developer Portal application Client ID
 - `EVE_CLIENT_SECRET`: EVE Developer Portal application Secret Key
 - `SESSION_SECRET`: Session encryption secret
 - `DATABASE_URL`: PostgreSQL connection string
+- `SEAT_API_TOKEN`: SeAT API token for multi-character sync (optional but required for character ownership validation)
 
 ### Key npm Packages
 - `drizzle-orm` / `drizzle-kit`: Database ORM and migration tools

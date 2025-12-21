@@ -39,22 +39,11 @@ export default function Landing() {
       <div className="relative z-10 flex min-h-screen flex-col">
         <header className="p-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center">
-              <svg viewBox="0 0 100 100" className="h-10 w-10" fill="none">
-                <polygon 
-                  points="50,10 90,85 10,85" 
-                  stroke="#4ade80" 
-                  strokeWidth="3" 
-                  fill="transparent"
-                />
-                <polygon 
-                  points="50,25 75,70 25,70" 
-                  stroke="#22c55e" 
-                  strokeWidth="2" 
-                  fill="transparent"
-                />
-              </svg>
-            </div>
+            <img 
+              src="https://images.evetech.net/alliances/99010412/logo?size=128" 
+              alt="Nisuwa Cartel Logo"
+              className="h-12 w-12"
+            />
             <span className="text-xl font-light tracking-wide text-white/90" data-testid="text-logo">
               NISUWA CARTEL
             </span>

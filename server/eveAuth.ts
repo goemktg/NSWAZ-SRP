@@ -178,7 +178,7 @@ export async function setupAuth(app: Express) {
     const state = crypto.randomBytes(16).toString("hex");
     req.session.oauthState = state;
 
-    const redirectUri = `${req.protocol}://${req.get("host")}/api/callback`;
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/callback`;
     
     const params = new URLSearchParams({
       response_type: "code",
@@ -191,7 +191,7 @@ export async function setupAuth(app: Express) {
   });
 
   // Callback route - handle EVE SSO response
-  app.get("/api/callback", async (req: Request, res: Response) => {
+  app.get("/api/auth/callback", async (req: Request, res: Response) => {
     try {
       const { code, state } = req.query;
 
@@ -205,7 +205,7 @@ export async function setupAuth(app: Express) {
 
       delete req.session.oauthState;
 
-      const redirectUri = `${req.protocol}://${req.get("host")}/api/callback`;
+      const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/callback`;
       const tokens = await exchangeCodeForToken(code, redirectUri);
       const characterInfo = await getCharacterInfo(tokens.access_token);
       const userId = await upsertUser(characterInfo, tokens);

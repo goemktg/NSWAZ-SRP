@@ -6,7 +6,7 @@ import AdmZip from "adm-zip";
 import readline from "readline";
 
 const SDE_URL = "https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip";
-const OUTPUT_DIR = path.join(process.cwd(), "server/data/sde");
+const OUTPUT_DIR = path.join(process.cwd(), "server/staticData/sde");
 const TEMP_DIR = path.join(process.cwd(), "temp_sde");
 
 const SHIP_CATEGORY_ID = 6;

@@ -12,7 +12,9 @@
         "Electronic Attack Ship",
         "Interceptor",
         "Logistics Frigate",
-        "Expedition Frigate"
+        "Expedition Frigate",
+        "Prototype Exploration Ship",
+        "Stealth Bomber"
       ]
     },
     {
@@ -33,20 +35,21 @@
         "Combat Recon Ship",
         "Force Recon Ship",
         "Heavy Assault Cruiser",
-        "Heavy Interdictor",
+        "Heavy Interdiction Cruiser",
         "Logistics",
         "Strategic Cruiser",
-        "Industrial Ship",
         "Blockade Runner",
         "Deep Space Transport",
         "Mining Barge",
-        "Exhumer"
+        "Exhumer",
+        "Flag Cruiser",
+        "Hauler"
       ]
     },
     {
       "name": "Battlecruiser",
       "maxPayout": 180000000,
-      "classes": ["Battlecruiser", "Command Ship", "Attack Battlecruiser"]
+      "classes": ["Combat Battlecruiser", "Command Ship", "Attack Battlecruiser", "Expedition Command Ship"]
     },
     {
       "name": "Battleship",
@@ -61,13 +64,15 @@
         "Dreadnought",
         "Force Auxiliary",
         "Supercarrier",
-        "Titan"
+        "Titan",
+        "Capital Industrial Ship",
+        "Lancer Dreadnought"
       ]
     },
     {
       "name": "Specialty",
       "maxPayout": 0,
-      "classes": ["Shuttle", "Capsule", "Corvette", "Industrial Command Ship"]
+      "classes": ["Shuttle", "Capsule", "Corvette", "Industrial Command Ship", "Freighter", "Jump Freighter"]
     }
   ]
 }

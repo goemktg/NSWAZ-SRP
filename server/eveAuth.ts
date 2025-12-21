@@ -235,58 +235,52 @@ export async function setupAuth(app: Express) {
   });
 
   // Test login route - ONLY available in development mode
-  app.post("/api/test-login", async (req: Request, res: Response) => {
+  // Follows the same flow as EVE SSO but with dummy values
+  app.get("/api/test-login", async (req: Request, res: Response) => {
     const isDevelopment = process.env.NODE_ENV !== "production";
     
     if (!isDevelopment) {
-      return res.status(403).json({ message: "Test login is only available in development mode" });
+      return res.redirect("/?error=test_login_disabled");
     }
 
     try {
-      const { role } = req.body;
-      const testRole = role || "member";
+      const role = (req.query.role as string) || "member";
       
-      // Create or find test user
-      const testCharacterId = 12345678;
-      const testCharacterName = `TestUser_${testRole}`;
-      
-      let [existingUser] = await db.select()
-        .from(users)
-        .where(eq(users.characterId, testCharacterId))
-        .limit(1);
+      // Dummy character info (same structure as EVE SSO response)
+      const testCharacterInfo: EveCharacterInfo = {
+        CharacterID: 12345678,
+        CharacterName: `TestUser_${role}`,
+        ExpiresOn: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        Scopes: "",
+        TokenType: "Character",
+        CharacterOwnerHash: "test_hash_" + role,
+        IntellectualProperty: "EVE",
+      };
 
-      let userId: string;
+      // Dummy tokens (same structure as EVE SSO token response)
+      const testTokens: EveTokenResponse = {
+        access_token: `test_access_token_${Date.now()}`,
+        token_type: "Bearer",
+        expires_in: 1200, // 20 minutes like real EVE tokens
+        refresh_token: `test_refresh_token_${Date.now()}`,
+      };
 
-      if (existingUser) {
-        userId = existingUser.id;
-      } else {
-        const [newUser] = await db.insert(users).values({
-          characterId: testCharacterId,
-          characterName: testCharacterName,
-          corporationId: 98000001,
-          allianceId: 99000001,
-          profileImageUrl: `https://images.evetech.net/characters/${testCharacterId}/portrait?size=64`,
-        }).returning();
-        userId = newUser.id;
-      }
+      // Use the same upsertUser function as real SSO
+      const userId = await upsertUser(testCharacterInfo, testTokens);
 
-      // Set session
+      // Set session exactly like real SSO callback
       req.session.userId = userId;
-      req.session.characterId = testCharacterId;
-      req.session.characterName = testCharacterName;
-      req.session.tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+      req.session.characterId = testCharacterInfo.CharacterID;
+      req.session.characterName = testCharacterInfo.CharacterName;
+      req.session.accessToken = testTokens.access_token;
+      req.session.refreshToken = testTokens.refresh_token;
+      req.session.tokenExpiry = Date.now() + testTokens.expires_in * 1000;
 
-      res.json({ 
-        success: true, 
-        message: "Test login successful",
-        user: {
-          id: userId,
-          characterName: testCharacterName,
-        }
-      });
+      // Redirect to homepage like real SSO
+      res.redirect("/");
     } catch (error) {
       console.error("Test login error:", error);
-      res.status(500).json({ message: "Test login failed" });
+      res.redirect("/?error=test_login_failed");
     }
   });
 

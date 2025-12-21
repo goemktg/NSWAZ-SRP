@@ -1,29 +1,19 @@
 import { FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import backgroundImage from "@assets/Nag1_1766304787177.png";
 
 export default function Landing() {
-  const [, setLocation] = useLocation();
-  
   const { data: devModeData } = useQuery<{ isDevelopment: boolean }>({
     queryKey: ["/api/dev-mode"],
   });
 
-  const testLoginMutation = useMutation({
-    mutationFn: async (role: string) => {
-      const response = await apiRequest("POST", "/api/test-login", { role });
-      return response.json();
-    },
-    onSuccess: () => {
-      setLocation("/");
-      window.location.reload();
-    },
-  });
-
   const isDevelopment = devModeData?.isDevelopment ?? false;
+  
+  const handleTestLogin = () => {
+    // Redirect to test login endpoint (same flow as SSO, but with dummy values)
+    window.location.href = "/api/test-login?role=member";
+  };
 
   return (
     <div className="relative min-h-screen bg-black">
@@ -74,8 +64,7 @@ export default function Landing() {
                   size="lg"
                   variant="ghost"
                   className="w-full max-w-xs text-white/60 hover:text-white hover:bg-white/10"
-                  onClick={() => testLoginMutation.mutate("member")}
-                  disabled={testLoginMutation.isPending}
+                  onClick={handleTestLogin}
                   data-testid="button-test-login"
                 >
                   <FlaskConical className="mr-2 h-4 w-4" />

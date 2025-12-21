@@ -1,13 +1,10 @@
 import { 
   users, 
   userRoles, 
-  shipTypes, 
   srpRequests,
   type User,
   type UserRole,
   type InsertUserRole,
-  type ShipType,
-  type InsertShipType,
   type SrpRequest,
   type InsertSrpRequest,
   type SrpRequestWithDetails,
@@ -15,19 +12,13 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, count } from "drizzle-orm";
+import { shipCatalogService } from "./services/shipCatalog";
 
 export interface IStorage {
   // User roles
   getUserRole(userId: string): Promise<UserRole | undefined>;
   createUserRole(data: InsertUserRole): Promise<UserRole>;
   updateUserRole(userId: string, role: string): Promise<UserRole | undefined>;
-
-  // Ship types
-  getShipTypes(): Promise<ShipType[]>;
-  getShipType(id: string): Promise<ShipType | undefined>;
-  createShipType(data: InsertShipType): Promise<ShipType>;
-  updateShipType(id: string, data: Partial<InsertShipType>): Promise<ShipType | undefined>;
-  deleteShipType(id: string): Promise<boolean>;
 
   // SRP Requests
   getSrpRequests(userId?: string, status?: string): Promise<SrpRequestWithDetails[]>;
@@ -61,35 +52,6 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
-  // Ship types
-  async getShipTypes(): Promise<ShipType[]> {
-    return db.select().from(shipTypes).orderBy(shipTypes.name);
-  }
-
-  async getShipType(id: string): Promise<ShipType | undefined> {
-    const [ship] = await db.select().from(shipTypes).where(eq(shipTypes.id, id));
-    return ship || undefined;
-  }
-
-  async createShipType(data: InsertShipType): Promise<ShipType> {
-    const [ship] = await db.insert(shipTypes).values(data).returning();
-    return ship;
-  }
-
-  async updateShipType(id: string, data: Partial<InsertShipType>): Promise<ShipType | undefined> {
-    const [updated] = await db
-      .update(shipTypes)
-      .set(data)
-      .where(eq(shipTypes.id, id))
-      .returning();
-    return updated || undefined;
-  }
-
-  async deleteShipType(id: string): Promise<boolean> {
-    const result = await db.delete(shipTypes).where(eq(shipTypes.id, id)).returning();
-    return result.length > 0;
-  }
-
   // SRP Requests
   async getSrpRequests(userId?: string, status?: string): Promise<SrpRequestWithDetails[]> {
     let conditions = [];
@@ -101,91 +63,62 @@ export class DatabaseStorage implements IStorage {
     }
 
     const requests = await db
-      .select({
-        id: srpRequests.id,
-        userId: srpRequests.userId,
-        shipTypeId: srpRequests.shipTypeId,
-        killmailUrl: srpRequests.killmailUrl,
-        iskAmount: srpRequests.iskAmount,
-        lossDescription: srpRequests.lossDescription,
-        fleetName: srpRequests.fleetName,
-        fcName: srpRequests.fcName,
-        status: srpRequests.status,
-        reviewerId: srpRequests.reviewerId,
-        reviewerNote: srpRequests.reviewerNote,
-        payoutAmount: srpRequests.payoutAmount,
-        createdAt: srpRequests.createdAt,
-        updatedAt: srpRequests.updatedAt,
-        reviewedAt: srpRequests.reviewedAt,
-        shipType: shipTypes,
-      })
+      .select()
       .from(srpRequests)
-      .leftJoin(shipTypes, eq(srpRequests.shipTypeId, shipTypes.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(srpRequests.createdAt));
 
     // Get pilot names
-    const userIds = [...new Set(requests.map(r => r.userId))];
+    const userIds = Array.from(new Set(requests.map(r => r.userId)));
     const pilotUsers = userIds.length > 0 
       ? await db.select().from(users).where(sql`${users.id} = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}])`)
       : [];
     
     const userMap = new Map(pilotUsers.map(u => [u.id, u]));
 
-    return requests.map(r => ({
-      ...r,
-      shipType: r.shipType || { id: "", name: "Unknown", category: "other", baseValue: 0 },
-      pilotName: userMap.get(r.userId)?.firstName 
-        ? `${userMap.get(r.userId)?.firstName} ${userMap.get(r.userId)?.lastName || ""}`.trim()
-        : userMap.get(r.userId)?.email || "Unknown Pilot",
-    }));
+    return requests.map(r => {
+      const shipData = shipCatalogService.getShipByTypeId(r.shipTypeId);
+      const user = userMap.get(r.userId);
+      
+      return {
+        ...r,
+        shipData: shipData,
+        pilotName: user?.characterName || "알 수 없는 파일럿",
+      };
+    });
   }
 
   async getSrpRequest(id: string): Promise<SrpRequestWithDetails | undefined> {
     const [request] = await db
-      .select({
-        id: srpRequests.id,
-        userId: srpRequests.userId,
-        shipTypeId: srpRequests.shipTypeId,
-        killmailUrl: srpRequests.killmailUrl,
-        iskAmount: srpRequests.iskAmount,
-        lossDescription: srpRequests.lossDescription,
-        fleetName: srpRequests.fleetName,
-        fcName: srpRequests.fcName,
-        status: srpRequests.status,
-        reviewerId: srpRequests.reviewerId,
-        reviewerNote: srpRequests.reviewerNote,
-        payoutAmount: srpRequests.payoutAmount,
-        createdAt: srpRequests.createdAt,
-        updatedAt: srpRequests.updatedAt,
-        reviewedAt: srpRequests.reviewedAt,
-        shipType: shipTypes,
-      })
+      .select()
       .from(srpRequests)
-      .leftJoin(shipTypes, eq(srpRequests.shipTypeId, shipTypes.id))
       .where(eq(srpRequests.id, id));
 
     if (!request) return undefined;
 
+    const shipData = shipCatalogService.getShipByTypeId(request.shipTypeId);
+    
     // Get pilot name
     const [pilot] = await db.select().from(users).where(eq(users.id, request.userId));
-    const pilotName = pilot?.firstName 
-      ? `${pilot.firstName} ${pilot.lastName || ""}`.trim()
-      : pilot?.email || "Unknown Pilot";
+    const pilotName = pilot?.characterName || "알 수 없는 파일럿";
 
     return {
       ...request,
-      shipType: request.shipType || { id: "", name: "Unknown", category: "other", baseValue: 0 },
+      shipData,
       pilotName,
     };
   }
 
   async createSrpRequest(userId: string, data: InsertSrpRequest): Promise<SrpRequest> {
+    // Get ship name from catalog for denormalization
+    const shipData = shipCatalogService.getShipByTypeId(data.shipTypeId);
+    
     const [request] = await db
       .insert(srpRequests)
       .values({
         ...data,
         userId,
+        shipTypeName: shipData?.typeName || null,
         status: "pending",
       })
       .returning();

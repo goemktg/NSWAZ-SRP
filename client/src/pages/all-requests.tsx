@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -38,12 +37,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SrpRequestWithDetails } from "@shared/schema";
 
-function getStatusVariant(status: string) {
+function getStatusVariant(status: string): "default" | "destructive" | "secondary" | "outline" {
   switch (status) {
     case "approved": return "default";
     case "denied": return "destructive";
@@ -52,9 +52,19 @@ function getStatusVariant(status: string) {
   }
 }
 
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case "approved": return "승인됨";
+    case "denied": return "거부됨";
+    case "processing": return "처리 중";
+    case "pending": return "대기 중";
+    default: return status;
+  }
+}
+
 function formatDate(date: string | Date | null): string {
   if (!date) return "-";
-  return new Date(date).toLocaleDateString("en-US", {
+  return new Date(date).toLocaleDateString("ko-KR", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -100,8 +110,8 @@ export default function AllRequests() {
     },
     onSuccess: () => {
       toast({
-        title: "Request Updated",
-        description: `Request has been ${reviewDialog.action === "approve" ? "approved" : "denied"}.`,
+        title: "요청 업데이트 완료",
+        description: `요청이 ${reviewDialog.action === "approve" ? "승인" : "거부"}되었습니다.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/srp-requests"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
@@ -109,8 +119,8 @@ export default function AllRequests() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to update request",
+        title: "오류",
+        description: error.message || "요청 업데이트에 실패했습니다",
         variant: "destructive",
       });
     },
@@ -143,9 +153,9 @@ export default function AllRequests() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold" data-testid="text-page-title">All Requests</h1>
+        <h1 className="text-3xl font-bold" data-testid="text-page-title">전체 요청</h1>
         <p className="text-muted-foreground">
-          Review and manage SRP requests from alliance members
+          얼라이언스 멤버의 SRP 요청을 검토하고 관리하세요
         </p>
       </div>
 
@@ -154,18 +164,18 @@ export default function AllRequests() {
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-sm font-medium">Filter by status:</Label>
+              <Label className="text-sm font-medium">상태 필터:</Label>
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-40" data-testid="select-status-filter">
-                <SelectValue placeholder="All statuses" />
+                <SelectValue placeholder="전체 상태" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="denied">Denied</SelectItem>
+                <SelectItem value="all">전체 상태</SelectItem>
+                <SelectItem value="pending">대기 중</SelectItem>
+                <SelectItem value="processing">처리 중</SelectItem>
+                <SelectItem value="approved">승인됨</SelectItem>
+                <SelectItem value="denied">거부됨</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -176,7 +186,7 @@ export default function AllRequests() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5" />
-            Request Queue
+            요청 대기열
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -193,13 +203,13 @@ export default function AllRequests() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Pilot</TableHead>
-                    <TableHead>Ship</TableHead>
-                    <TableHead>Fleet / FC</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>날짜</TableHead>
+                    <TableHead>파일럿</TableHead>
+                    <TableHead>함선</TableHead>
+                    <TableHead>함대 / FC</TableHead>
+                    <TableHead className="text-right">금액</TableHead>
+                    <TableHead>상태</TableHead>
+                    <TableHead className="text-right">작업</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -209,10 +219,10 @@ export default function AllRequests() {
                         {formatDate(request.createdAt)}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {request.pilotName || "Unknown"}
+                        {request.pilotName || "알 수 없음"}
                       </TableCell>
                       <TableCell>
-                        {request.shipType?.name || "Unknown"}
+                        {request.shipData?.typeName || request.shipTypeName || "알 수 없음"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         <div className="flex flex-col">
@@ -225,7 +235,7 @@ export default function AllRequests() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusVariant(request.status)}>
-                          {request.status}
+                          {getStatusLabel(request.status)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -284,11 +294,11 @@ export default function AllRequests() {
           ) : (
             <div className="py-12 text-center" data-testid="text-no-requests">
               <Clock className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
-              <h3 className="mt-4 text-lg font-semibold">No requests found</h3>
+              <h3 className="mt-4 text-lg font-semibold">요청 없음</h3>
               <p className="mt-2 text-muted-foreground">
                 {statusFilter !== "all" 
-                  ? `No ${statusFilter} requests at this time`
-                  : "The request queue is empty"}
+                  ? `현재 ${getStatusLabel(statusFilter)} 요청이 없습니다`
+                  : "요청 대기열이 비어있습니다"}
               </p>
             </div>
           )}
@@ -299,18 +309,18 @@ export default function AllRequests() {
         <DialogContent data-testid="dialog-review">
           <DialogHeader>
             <DialogTitle>
-              {reviewDialog.action === "approve" ? "Approve" : "Deny"} Request
+              요청 {reviewDialog.action === "approve" ? "승인" : "거부"}
             </DialogTitle>
             <DialogDescription>
               {reviewDialog.action === "approve"
-                ? "Set the payout amount and add any notes for this approval."
-                : "Provide a reason for denying this request."}
+                ? "지급 금액을 설정하고 메모를 추가하세요."
+                : "거부 사유를 입력해주세요."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {reviewDialog.action === "approve" && (
               <div className="space-y-2">
-                <Label htmlFor="payout">Payout Amount (in millions ISK)</Label>
+                <Label htmlFor="payout">지급 금액 (백만 ISK 단위)</Label>
                 <Input
                   id="payout"
                   type="number"
@@ -322,7 +332,7 @@ export default function AllRequests() {
             )}
             <div className="space-y-2">
               <Label htmlFor="note">
-                {reviewDialog.action === "approve" ? "Notes (optional)" : "Denial Reason"}
+                {reviewDialog.action === "approve" ? "메모 (선택사항)" : "거부 사유"}
               </Label>
               <Textarea
                 id="note"
@@ -330,8 +340,8 @@ export default function AllRequests() {
                 onChange={(e) => setReviewNote(e.target.value)}
                 placeholder={
                   reviewDialog.action === "approve"
-                    ? "Add any additional notes..."
-                    : "Explain why this request is being denied..."
+                    ? "추가 메모를 작성하세요..."
+                    : "이 요청을 거부하는 이유를 설명해주세요..."
                 }
                 className="min-h-[80px]"
                 data-testid="textarea-review-note"
@@ -340,7 +350,7 @@ export default function AllRequests() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog} data-testid="button-cancel-review">
-              Cancel
+              취소
             </Button>
             <Button
               onClick={handleReview}
@@ -348,8 +358,8 @@ export default function AllRequests() {
               variant={reviewDialog.action === "approve" ? "default" : "destructive"}
               data-testid="button-confirm-review"
             >
-              {reviewMutation.isPending ? "Processing..." : 
-                reviewDialog.action === "approve" ? "Approve" : "Deny"}
+              {reviewMutation.isPending ? "처리 중..." : 
+                reviewDialog.action === "approve" ? "승인" : "거부"}
             </Button>
           </DialogFooter>
         </DialogContent>

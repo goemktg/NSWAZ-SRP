@@ -10,14 +10,6 @@ export * from "./models/auth";
 export const userRoleEnum = pgEnum("user_role", ["member", "fc", "admin"]);
 export const srpStatusEnum = pgEnum("srp_status", ["pending", "approved", "denied", "processing"]);
 
-// Ship types table (3NF - separate entity for ships)
-export const shipTypes = pgTable("ship_types", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull().unique(),
-  category: text("category").notNull(), // frigate, destroyer, cruiser, battlecruiser, battleship, capital
-  baseValue: integer("base_value").notNull().default(0), // ISK value
-});
-
 // User roles table (3NF - separate entity for role assignments)
 export const userRoles = pgTable("user_roles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -31,9 +23,10 @@ export const userRoles = pgTable("user_roles", {
 export const srpRequests = pgTable("srp_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  shipTypeId: varchar("ship_type_id").notNull(),
+  shipTypeId: integer("ship_type_id").notNull(),
+  shipTypeName: text("ship_type_name"),
   killmailUrl: text("killmail_url").notNull(),
-  iskAmount: integer("isk_amount").notNull(), // in millions ISK
+  iskAmount: integer("isk_amount").notNull(),
   lossDescription: text("loss_description"),
   fleetName: text("fleet_name"),
   fcName: text("fc_name"),
@@ -50,22 +43,9 @@ export const srpRequests = pgTable("srp_requests", {
   index("idx_srp_requests_created_at").on(table.createdAt),
 ]);
 
-// Relations
-export const shipTypesRelations = relations(shipTypes, ({ many }) => ({
-  srpRequests: many(srpRequests),
-}));
-
-export const srpRequestsRelations = relations(srpRequests, ({ one }) => ({
-  shipType: one(shipTypes, {
-    fields: [srpRequests.shipTypeId],
-    references: [shipTypes.id],
-  }),
-}));
-
 export const userRolesRelations = relations(userRoles, ({ }) => ({}));
 
 // Insert schemas
-export const insertShipTypeSchema = createInsertSchema(shipTypes).omit({ id: true });
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true });
 export const insertSrpRequestSchema = createInsertSchema(srpRequests).omit({ 
   id: true, 
@@ -80,19 +60,32 @@ export const insertSrpRequestSchema = createInsertSchema(srpRequests).omit({
 
 // Extended validation schema for SRP request form
 export const srpRequestFormSchema = insertSrpRequestSchema.extend({
-  killmailUrl: z.string().url("Please enter a valid killmail URL").refine(
+  killmailUrl: z.string().url("올바른 킬메일 URL을 입력해주세요").refine(
     (url) => url.includes("zkillboard.com") || url.includes("esi.evetech.net"),
-    "URL must be from zKillboard or EVE ESI"
+    "URL은 zKillboard 또는 EVE ESI에서 가져와야 합니다"
   ),
-  iskAmount: z.number().min(1, "ISK amount must be at least 1 million"),
-  lossDescription: z.string().min(10, "Please provide a description of at least 10 characters"),
-  fleetName: z.string().min(1, "Fleet name is required"),
-  fcName: z.string().min(1, "FC name is required"),
+  iskAmount: z.number().min(1, "ISK 금액은 최소 1백만 이상이어야 합니다"),
+  lossDescription: z.string().min(10, "최소 10자 이상의 설명을 입력해주세요"),
+  fleetName: z.string().min(1, "함대명을 입력해주세요"),
+  fcName: z.string().min(1, "FC 이름을 입력해주세요"),
 });
 
+// Ship data type (from EVE SDE catalog)
+export type ShipData = {
+  typeID: number;
+  typeName: string;
+  typeNameKo: string;
+  groupID: number;
+  groupName: string;
+  groupNameKo: string;
+  categoryID: number;
+  categoryName: string;
+  basePrice: number;
+  volume?: number;
+  marketGroupID?: number;
+};
+
 // Types
-export type ShipType = typeof shipTypes.$inferSelect;
-export type InsertShipType = z.infer<typeof insertShipTypeSchema>;
 export type UserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
 export type SrpRequest = typeof srpRequests.$inferSelect;
@@ -101,7 +94,7 @@ export type SrpRequestFormData = z.infer<typeof srpRequestFormSchema>;
 
 // Extended types for frontend display
 export type SrpRequestWithDetails = SrpRequest & {
-  shipType: ShipType;
+  shipData?: ShipData;
   pilotName?: string;
   reviewerName?: string;
 };

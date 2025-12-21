@@ -1,9 +1,10 @@
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { z } from "zod";
-import { Loader2, HelpCircle } from "lucide-react";
+import { Loader2, HelpCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -18,12 +19,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Tooltip,
   TooltipContent,
@@ -31,18 +38,19 @@ import {
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { ShipType } from "@shared/schema";
+import type { ShipData } from "@shared/schema";
 
 const formSchema = z.object({
-  shipTypeId: z.string().min(1, "Please select a ship type"),
-  killmailUrl: z.string().url("Please enter a valid URL").refine(
+  shipTypeId: z.number().min(1, "함선을 선택해주세요"),
+  shipTypeName: z.string().optional(),
+  killmailUrl: z.string().url("올바른 URL을 입력해주세요").refine(
     (url) => url.includes("zkillboard.com") || url.includes("esi.evetech.net"),
-    "URL must be from zKillboard or EVE ESI"
+    "URL은 zKillboard 또는 EVE ESI에서 가져와야 합니다"
   ),
-  iskAmount: z.coerce.number().min(1, "ISK amount must be at least 1 million"),
-  fleetName: z.string().min(1, "Fleet name is required"),
-  fcName: z.string().min(1, "FC name is required"),
-  lossDescription: z.string().min(10, "Please provide a description of at least 10 characters"),
+  iskAmount: z.coerce.number().min(1, "ISK 금액은 최소 1백만 이상이어야 합니다"),
+  fleetName: z.string().min(1, "함대명을 입력해주세요"),
+  fcName: z.string().min(1, "FC 이름을 입력해주세요"),
+  lossDescription: z.string().min(10, "최소 10자 이상의 설명을 입력해주세요"),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -50,15 +58,18 @@ type FormValues = z.infer<typeof formSchema>;
 export default function NewRequest() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [shipSearchOpen, setShipSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: shipTypes, isLoading: shipsLoading } = useQuery<ShipType[]>({
-    queryKey: ["/api/ship-types"],
+  const { data: ships, isLoading: shipsLoading } = useQuery<ShipData[]>({
+    queryKey: ["/api/ships"],
   });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      shipTypeId: "",
+      shipTypeId: 0,
+      shipTypeName: "",
       killmailUrl: "",
       iskAmount: 0,
       fleetName: "",
@@ -67,14 +78,44 @@ export default function NewRequest() {
     },
   });
 
+  const selectedShipId = form.watch("shipTypeId");
+  const selectedShip = useMemo(() => {
+    if (!ships || !selectedShipId) return null;
+    return ships.find(s => s.typeID === selectedShipId);
+  }, [ships, selectedShipId]);
+
+  const filteredShips = useMemo(() => {
+    if (!ships) return [];
+    if (!searchQuery) return ships.slice(0, 50);
+    const query = searchQuery.toLowerCase();
+    return ships
+      .filter(ship => 
+        ship.typeName.toLowerCase().includes(query) ||
+        ship.typeNameKo.includes(searchQuery) ||
+        ship.groupName.toLowerCase().includes(query)
+      )
+      .slice(0, 50);
+  }, [ships, searchQuery]);
+
+  const groupedShips = useMemo(() => {
+    const groups: Record<string, ShipData[]> = {};
+    filteredShips.forEach(ship => {
+      if (!groups[ship.groupName]) {
+        groups[ship.groupName] = [];
+      }
+      groups[ship.groupName].push(ship);
+    });
+    return groups;
+  }, [filteredShips]);
+
   const mutation = useMutation({
     mutationFn: async (data: FormValues) => {
       return apiRequest("POST", "/api/srp-requests", data);
     },
     onSuccess: () => {
       toast({
-        title: "Request Submitted",
-        description: "Your SRP request has been submitted for review.",
+        title: "요청 제출 완료",
+        description: "SRP 요청이 검토를 위해 제출되었습니다.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/srp-requests"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
@@ -82,8 +123,8 @@ export default function NewRequest() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to submit request",
+        title: "오류",
+        description: error.message || "요청 제출에 실패했습니다",
         variant: "destructive",
       });
     },
@@ -98,16 +139,16 @@ export default function NewRequest() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold" data-testid="text-page-title">새 SRP 요청</h1>
         <p className="text-muted-foreground">
-          함선에 대한 보상 요청을 제출하세요
+          함선 손실에 대한 보상 요청을 제출하세요
         </p>
       </div>
 
       <Card data-testid="card-request-form">
         <CardHeader>
-          <CardTitle>Request Details</CardTitle>
+          <CardTitle>요청 세부사항</CardTitle>
           <CardDescription>
-            Fill out all required fields to submit your SRP claim. Make sure to provide accurate
-            information to speed up the approval process.
+            모든 필수 항목을 작성하여 SRP 요청을 제출하세요. 정확한 정보를 제공하면
+            승인 절차가 빨라집니다.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -119,13 +160,13 @@ export default function NewRequest() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center gap-2">
-                      Killmail URL
+                      킬메일 URL
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="h-4 w-4 text-muted-foreground" />
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Find your loss on zkillboard.com and copy the URL</p>
+                          <p>zkillboard.com에서 손실 킬메일을 찾아 URL을 복사하세요</p>
                         </TooltipContent>
                       </Tooltip>
                     </FormLabel>
@@ -137,7 +178,7 @@ export default function NewRequest() {
                       />
                     </FormControl>
                     <FormDescription>
-                      Link from zKillboard or EVE ESI
+                      zKillboard 또는 EVE ESI 링크
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -148,28 +189,68 @@ export default function NewRequest() {
                 control={form.control}
                 name="shipTypeId"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Ship Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-ship-type">
-                          <SelectValue placeholder="Select the ship you lost" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {shipsLoading ? (
-                          <SelectItem value="loading" disabled>Loading...</SelectItem>
-                        ) : shipTypes && shipTypes.length > 0 ? (
-                          shipTypes.map((ship) => (
-                            <SelectItem key={ship.id} value={ship.id} data-testid={`option-ship-${ship.id}`}>
-                              {ship.name} ({ship.category})
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="none" disabled>No ships available</SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                  <FormItem className="flex flex-col">
+                    <FormLabel>함선 유형</FormLabel>
+                    <Popover open={shipSearchOpen} onOpenChange={setShipSearchOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={shipSearchOpen}
+                            className="justify-between"
+                            data-testid="select-ship-type"
+                          >
+                            {selectedShip ? (
+                              <span>
+                                {selectedShip.typeName} 
+                                <span className="ml-2 text-muted-foreground">
+                                  ({selectedShip.groupName})
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                {shipsLoading ? "로딩 중..." : "손실한 함선 선택"}
+                              </span>
+                            )}
+                            <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command shouldFilter={false}>
+                          <CommandInput 
+                            placeholder="함선 검색..." 
+                            value={searchQuery}
+                            onValueChange={setSearchQuery}
+                            data-testid="input-ship-search"
+                          />
+                          <CommandList>
+                            <CommandEmpty>
+                              {shipsLoading ? "로딩 중..." : "검색 결과 없음"}
+                            </CommandEmpty>
+                            {Object.entries(groupedShips).map(([groupName, groupShips]) => (
+                              <CommandGroup key={groupName} heading={groupName}>
+                                {groupShips.map((ship) => (
+                                  <CommandItem
+                                    key={ship.typeID}
+                                    value={ship.typeID.toString()}
+                                    onSelect={() => {
+                                      field.onChange(ship.typeID);
+                                      form.setValue("shipTypeName", ship.typeName);
+                                      setShipSearchOpen(false);
+                                    }}
+                                    data-testid={`option-ship-${ship.typeID}`}
+                                  >
+                                    {ship.typeName}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            ))}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -180,17 +261,17 @@ export default function NewRequest() {
                 name="iskAmount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Loss Value (in millions ISK)</FormLabel>
+                    <FormLabel>손실 금액 (백만 ISK 단위)</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
-                        placeholder="e.g., 150 for 150M ISK"
+                        placeholder="예: 150은 1억 5천만 ISK"
                         data-testid="input-isk-amount"
                         {...field}
                       />
                     </FormControl>
                     <FormDescription>
-                      Total value of your loss including hull and fittings
+                      헐과 피팅을 포함한 총 손실 금액
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -203,10 +284,10 @@ export default function NewRequest() {
                   name="fleetName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Fleet Name</FormLabel>
+                      <FormLabel>함대명</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="e.g., Stratop Defense Fleet"
+                          placeholder="예: 방어 플릿"
                           data-testid="input-fleet-name"
                           {...field}
                         />
@@ -221,10 +302,10 @@ export default function NewRequest() {
                   name="fcName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>FC Name</FormLabel>
+                      <FormLabel>FC 이름</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Fleet commander name"
+                          placeholder="함대 사령관 이름"
                           data-testid="input-fc-name"
                           {...field}
                         />
@@ -240,17 +321,17 @@ export default function NewRequest() {
                 name="lossDescription"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Loss Description</FormLabel>
+                    <FormLabel>손실 설명</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Describe the circumstances of your loss..."
+                        placeholder="손실 상황을 설명해주세요..."
                         className="min-h-[100px] resize-none"
                         data-testid="textarea-description"
                         {...field}
                       />
                     </FormControl>
                     <FormDescription>
-                      Briefly explain how the ship was lost during the operation
+                      작전 중 함선이 어떻게 손실되었는지 간략히 설명해주세요
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -264,7 +345,7 @@ export default function NewRequest() {
                   data-testid="button-submit"
                 >
                   {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {mutation.isPending ? "Submitting..." : "Submit Request"}
+                  {mutation.isPending ? "제출 중..." : "요청 제출"}
                 </Button>
                 <Button
                   type="button"
@@ -272,7 +353,7 @@ export default function NewRequest() {
                   onClick={() => setLocation("/my-requests")}
                   data-testid="button-cancel"
                 >
-                  Cancel
+                  취소
                 </Button>
               </div>
             </form>

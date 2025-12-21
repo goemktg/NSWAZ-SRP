@@ -2,8 +2,9 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./eveAuth";
-import { insertSrpRequestSchema, insertShipTypeSchema } from "@shared/schema";
+import { insertSrpRequestSchema } from "@shared/schema";
 import { z } from "zod";
+import { shipCatalogService } from "./services/shipCatalog";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -46,86 +47,80 @@ export async function registerRoutes(
     }
   });
 
-  // Ship types - public endpoints for authenticated users
-  app.get("/api/ship-types", isAuthenticated, async (req, res) => {
+  // Ship types from EVE SDE catalog (read-only)
+  app.get("/api/ships", isAuthenticated, async (req, res) => {
     try {
-      const ships = await storage.getShipTypes();
+      const ships = shipCatalogService.getAllShips();
       res.json(ships);
     } catch (error) {
-      console.error("Error getting ship types:", error);
-      res.status(500).json({ message: "Failed to get ship types" });
+      console.error("Error getting ships:", error);
+      res.status(500).json({ message: "Failed to get ships" });
     }
   });
 
-  // Ship types - admin only
-  app.post("/api/ship-types", isAuthenticated, async (req: Request, res) => {
+  // Get ship by typeID
+  app.get("/api/ships/:typeId", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.session.userId!;
-      const userRole = await storage.getUserRole(userId);
-      
-      if (!userRole || !["admin", "fc"].includes(userRole.role)) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      const validated = insertShipTypeSchema.parse(req.body);
-      const ship = await storage.createShipType(validated);
-      res.status(201).json(ship);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
-      }
-      console.error("Error creating ship type:", error);
-      res.status(500).json({ message: "Failed to create ship type" });
-    }
-  });
-
-  app.patch("/api/ship-types/:id", isAuthenticated, async (req: Request, res) => {
-    try {
-      const userId = req.session.userId!;
-      const userRole = await storage.getUserRole(userId);
-      
-      if (!userRole || !["admin", "fc"].includes(userRole.role)) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      const { id } = req.params;
-      const validated = insertShipTypeSchema.partial().parse(req.body);
-      const ship = await storage.updateShipType(id, validated);
+      const typeId = parseInt(req.params.typeId, 10);
+      const ship = shipCatalogService.getShipByTypeId(typeId);
       
       if (!ship) {
-        return res.status(404).json({ message: "Ship type not found" });
+        return res.status(404).json({ message: "Ship not found" });
       }
       
       res.json(ship);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
-      }
-      console.error("Error updating ship type:", error);
-      res.status(500).json({ message: "Failed to update ship type" });
+      console.error("Error getting ship:", error);
+      res.status(500).json({ message: "Failed to get ship" });
     }
   });
 
-  app.delete("/api/ship-types/:id", isAuthenticated, async (req: Request, res) => {
+  // Get all ship groups
+  app.get("/api/ships/groups/all", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.session.userId!;
-      const userRole = await storage.getUserRole(userId);
-      
-      if (!userRole || !["admin", "fc"].includes(userRole.role)) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      const { id } = req.params;
-      const deleted = await storage.deleteShipType(id);
-      
-      if (!deleted) {
-        return res.status(404).json({ message: "Ship type not found" });
-      }
-      
-      res.status(204).send();
+      const groups = shipCatalogService.getAllGroups();
+      res.json(groups);
     } catch (error) {
-      console.error("Error deleting ship type:", error);
-      res.status(500).json({ message: "Failed to delete ship type" });
+      console.error("Error getting ship groups:", error);
+      res.status(500).json({ message: "Failed to get ship groups" });
+    }
+  });
+
+  // Get ships by group
+  app.get("/api/ships/group/:groupName", isAuthenticated, async (req, res) => {
+    try {
+      const { groupName } = req.params;
+      const ships = shipCatalogService.getShipsByGroup(decodeURIComponent(groupName));
+      res.json(ships);
+    } catch (error) {
+      console.error("Error getting ships by group:", error);
+      res.status(500).json({ message: "Failed to get ships" });
+    }
+  });
+
+  // Search ships
+  app.get("/api/ships/search/:query", isAuthenticated, async (req, res) => {
+    try {
+      const { query } = req.params;
+      const ships = shipCatalogService.searchShips(decodeURIComponent(query));
+      res.json(ships);
+    } catch (error) {
+      console.error("Error searching ships:", error);
+      res.status(500).json({ message: "Failed to search ships" });
+    }
+  });
+
+  // Ship catalog info
+  app.get("/api/ships/catalog/info", isAuthenticated, async (req, res) => {
+    try {
+      res.json({
+        version: shipCatalogService.getVersion(),
+        totalShips: shipCatalogService.getTotalShips(),
+        isLoaded: shipCatalogService.isLoaded(),
+      });
+    } catch (error) {
+      console.error("Error getting catalog info:", error);
+      res.status(500).json({ message: "Failed to get catalog info" });
     }
   });
 

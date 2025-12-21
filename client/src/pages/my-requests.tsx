@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import type { SrpRequestWithDetails } from "@shared/schema";
 
-function getStatusVariant(status: string) {
+function getStatusVariant(status: string): "default" | "destructive" | "secondary" | "outline" {
   switch (status) {
     case "approved": return "default";
     case "denied": return "destructive";
@@ -24,9 +24,19 @@ function getStatusVariant(status: string) {
   }
 }
 
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case "approved": return "승인됨";
+    case "denied": return "거부됨";
+    case "processing": return "처리 중";
+    case "pending": return "대기 중";
+    default: return status;
+  }
+}
+
 function formatDate(date: string | Date | null): string {
   if (!date) return "-";
-  return new Date(date).toLocaleDateString("en-US", {
+  return new Date(date).toLocaleDateString("ko-KR", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -73,13 +83,13 @@ export default function MyRequests() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Ship</TableHead>
-                    <TableHead>Fleet</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Payout</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>날짜</TableHead>
+                    <TableHead>함선</TableHead>
+                    <TableHead>함대</TableHead>
+                    <TableHead className="text-right">금액</TableHead>
+                    <TableHead className="text-right">지급액</TableHead>
+                    <TableHead>상태</TableHead>
+                    <TableHead className="text-right">작업</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -89,7 +99,7 @@ export default function MyRequests() {
                         {formatDate(request.createdAt)}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {request.shipType?.name || "Unknown"}
+                        {request.shipData?.typeName || request.shipTypeName || "알 수 없음"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {request.fleetName || "-"}
@@ -102,7 +112,7 @@ export default function MyRequests() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusVariant(request.status)}>
-                          {request.status}
+                          {getStatusLabel(request.status)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">

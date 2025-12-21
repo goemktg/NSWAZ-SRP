@@ -465,9 +465,28 @@ export default function NewRequest() {
                     <div className="text-2xl font-bold text-primary" data-testid="text-estimated-payout">
                       {formatIsk(calculatedPayout.estimatedPayout)}
                     </div>
-                    <div className="text-sm text-muted-foreground mt-2">
-                      {operationType === "fleet" ? "플릿 (50%)" : "솔로잉 (25%)"}
-                      {isSpecialRole && operationType === "fleet" && " + 특수롤 보너스 (50%)"}
+                    <div className="text-sm text-muted-foreground mt-2 space-y-1">
+                      <div>
+                        {operationType === "fleet" 
+                          ? (isSpecialRole ? "플릿 + 특수롤 (100%)" : "플릿 (50%)")
+                          : calculatedPayout.breakdown.isSpecialShipClass 
+                            ? "솔로잉 + 지원함급 보너스 (100%)" 
+                            : (isSpecialRole ? "솔로잉 + 특수롤 (100%)" : "솔로잉 (25%)")
+                        }
+                      </div>
+                      {(() => {
+                        const { baseValue, operationMultiplier, finalAmount, maxPayout } = calculatedPayout.breakdown;
+                        const calculatedAmount = baseValue * operationMultiplier;
+                        if (finalAmount < calculatedAmount && maxPayout < calculatedAmount) {
+                          const reductionPercent = Math.round((1 - finalAmount / calculatedAmount) * 100);
+                          return (
+                            <div className="text-amber-600 dark:text-amber-400">
+                              함급별 총액 제한 (-{reductionPercent}%)
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </CardContent>
                 </Card>

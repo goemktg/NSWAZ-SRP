@@ -114,16 +114,21 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter className="p-4">
-        {userRole && (
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2">
+          {user && (
+            <span className="text-sm font-medium" data-testid="text-main-character-name">
+              {user.characterName}
+            </span>
+          )}
+          {userRole && (
             <Badge 
               variant={userRole.role === "admin" ? "default" : "secondary"}
               data-testid="badge-user-role"
             >
               {userRole.role.toUpperCase()}
             </Badge>
-          </div>
-        )}
+          )}
+        </div>
       </SidebarFooter>
     </Sidebar>
   );

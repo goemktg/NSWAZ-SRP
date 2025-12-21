@@ -255,10 +255,17 @@ export async function setupAuth(app: Express) {
       // Use a real character ID for development testing
       const testCharacterId = 96386549;
       
+      // Try to get character name from SeAT API
+      let characterName = `TestUser_${role}`;
+      const characterSheet = await seatApiService.getCharacterSheet(testCharacterId);
+      if (characterSheet && characterSheet.name) {
+        characterName = characterSheet.name;
+      }
+      
       // Dummy character info (same structure as EVE SSO response)
       const testCharacterInfo: EveCharacterInfo = {
         CharacterID: testCharacterId,
-        CharacterName: `TestUser_${role}`,
+        CharacterName: characterName,
         ExpiresOn: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         Scopes: "",
         TokenType: "Character",

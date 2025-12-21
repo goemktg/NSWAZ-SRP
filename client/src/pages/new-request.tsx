@@ -96,9 +96,9 @@ export default function NewRequest() {
   return (
     <div className="max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold" data-testid="text-page-title">New SRP Request</h1>
+        <h1 className="text-3xl font-bold" data-testid="text-page-title">새 SRP 요청</h1>
         <p className="text-muted-foreground">
-          Submit a request for ship replacement reimbursement
+          함선에 대한 보상 요청을 제출하세요
         </p>
       </div>
 

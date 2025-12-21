@@ -42,22 +42,22 @@ export default function MyRequests() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">My Requests</h1>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">나의 요청</h1>
           <p className="text-muted-foreground">
-            Track the status of your SRP submissions
+            SRP 요청 내역과 상태를 확인하세요
           </p>
         </div>
         <Button asChild data-testid="button-new-request">
           <Link href="/new-request">
             <PlusCircle className="mr-2 h-4 w-4" />
-            New Request
+            새 요청
           </Link>
         </Button>
       </div>
 
       <Card data-testid="card-requests-table">
         <CardHeader>
-          <CardTitle>Request History</CardTitle>
+          <CardTitle>요청 기록</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -141,14 +141,14 @@ export default function MyRequests() {
           ) : (
             <div className="py-12 text-center" data-testid="text-no-requests">
               <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
-              <h3 className="mt-4 text-lg font-semibold">No requests yet</h3>
+              <h3 className="mt-4 text-lg font-semibold">아직 요청이 없습니다</h3>
               <p className="mt-2 text-muted-foreground">
-                Submit your first SRP request to get started
+                첫 SRP 요청을 제출하여 시작하세요
               </p>
               <Button asChild className="mt-4" data-testid="button-submit-first">
                 <Link href="/new-request">
                   <PlusCircle className="mr-2 h-4 w-4" />
-                  Submit Request
+                  요청 제출하기
                 </Link>
               </Button>
             </div>

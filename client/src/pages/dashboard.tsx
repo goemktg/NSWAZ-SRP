@@ -85,33 +85,33 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+        <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">대시보드</h1>
         <p className="text-muted-foreground">
-          Overview of your SRP activity and alliance statistics
+          당신의 SRP 활동 개요입니다.
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Pending Requests"
+          title="승인 대기중인 요청"
           value={stats?.pendingCount ?? 0}
           icon={Clock}
           loading={statsLoading}
         />
         <StatCard
-          title="Approved Today"
+          title="오늘 승인된 요청 수"
           value={stats?.approvedToday ?? 0}
           icon={CheckCircle}
           loading={statsLoading}
         />
         <StatCard
-          title="Total Paid Out"
+          title="총 지급된 ISK"
           value={stats ? formatIsk(stats.totalPaidOut) : "0M ISK"}
           icon={DollarSign}
           loading={statsLoading}
         />
         <StatCard
-          title="Avg. Processing"
+          title="평균 처리 시간"
           value={stats ? `${stats.averageProcessingHours}h` : "0h"}
           icon={Timer}
           loading={statsLoading}
@@ -121,19 +121,19 @@ export default function Dashboard() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card data-testid="card-quick-actions">
           <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+            <CardTitle>빠른 행동</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Button asChild className="justify-start" data-testid="button-new-request">
               <Link href="/new-request">
                 <PlusCircle className="mr-2 h-4 w-4" />
-                Submit New SRP Request
+                SRP 요청 제출하기
               </Link>
             </Button>
             <Button asChild variant="outline" className="justify-start" data-testid="button-view-requests">
               <Link href="/my-requests">
                 <FileText className="mr-2 h-4 w-4" />
-                View My Requests
+                나의 요청 보기
               </Link>
             </Button>
           </CardContent>
@@ -141,10 +141,10 @@ export default function Dashboard() {
 
         <Card data-testid="card-recent-activity">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle>Recent Activity</CardTitle>
+            <CardTitle>최근 요청한 킬메일</CardTitle>
             <Button variant="ghost" size="sm" asChild data-testid="button-view-all">
               <Link href="/my-requests">
-                View All
+                모두 보기
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Link>
             </Button>
@@ -188,8 +188,8 @@ export default function Dashboard() {
             ) : (
               <div className="py-8 text-center text-muted-foreground" data-testid="text-no-activity">
                 <FileText className="mx-auto h-8 w-8 mb-2 opacity-50" />
-                <p>No recent activity</p>
-                <p className="text-sm">Submit your first SRP request to get started</p>
+                <p>최근 요청한 킬메일 없음</p>
+                <p className="text-sm">첫 SRP 요청을 제출하여 시작하세요</p>
               </div>
             )}
           </CardContent>

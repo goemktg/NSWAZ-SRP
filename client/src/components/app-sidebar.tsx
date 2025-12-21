@@ -26,9 +26,9 @@ import { useQuery } from "@tanstack/react-query";
 import type { DashboardStats } from "@shared/schema";
 
 const memberItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "New Request", url: "/new-request", icon: PlusCircle },
-  { title: "My Requests", url: "/my-requests", icon: FileText },
+  { title: "대시보드", url: "/", icon: LayoutDashboard },
+  { title: "새 요청", url: "/new-request", icon: PlusCircle },
+  { title: "나의 요청", url: "/my-requests", icon: FileText },
 ];
 
 const adminItems = [

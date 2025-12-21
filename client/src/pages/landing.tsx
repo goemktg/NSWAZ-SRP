@@ -53,7 +53,7 @@ export default function Landing() {
         <main className="flex flex-1 flex-col items-center justify-center px-4">
           <div className="w-full max-w-md space-y-8 text-center">
             <h1 className="text-2xl font-light tracking-wider text-white/80" data-testid="text-hero-title">
-              Ship Replacement Program
+              SRP Management System
             </h1>
             
             <div className="space-y-4">

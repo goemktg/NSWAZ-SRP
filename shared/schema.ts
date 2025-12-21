@@ -127,6 +127,7 @@ export type SrpCalculateResponse = {
     specialRoleBonus: number;
     finalAmount: number;
     maxPayout: number;
+    isSpecialShipClass?: boolean;
   };
 };
 

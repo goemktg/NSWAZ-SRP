@@ -223,9 +223,20 @@ export async function registerRoutes(
       const { iskValue, operationType, isSpecialRole, groupName } = validated;
 
       const baseValue = iskValue;
-      const operationMultiplier = operationType === "fleet" 
-        ? SRP_POLICY.FLEET_MULTIPLIER 
-        : SRP_POLICY.SOLO_MULTIPLIER;
+      
+      // Check if special class (gets 100% even for solo)
+      const isSpecialShipClass = groupName ? srpLimitsService.isSpecialClass(groupName) : false;
+      
+      // Special class solo gets 100%, regular solo gets 50%
+      let operationMultiplier: number;
+      if (operationType === "fleet") {
+        operationMultiplier = SRP_POLICY.FLEET_MULTIPLIER;
+      } else if (isSpecialShipClass) {
+        operationMultiplier = SRP_POLICY.FLEET_MULTIPLIER; // 100% for special class solo
+      } else {
+        operationMultiplier = SRP_POLICY.SOLO_MULTIPLIER;
+      }
+      
       const specialRoleBonus = isSpecialRole ? SRP_POLICY.SPECIAL_ROLE_BONUS : 0;
 
       let calculatedAmount = baseValue * operationMultiplier * (1 + specialRoleBonus);
@@ -249,6 +260,7 @@ export async function registerRoutes(
           specialRoleBonus,
           finalAmount,
           maxPayout,
+          isSpecialShipClass,
         },
       };
 

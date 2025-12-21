@@ -13,13 +13,22 @@ interface SrpLimitsData {
   tiers: SrpTier[];
 }
 
+interface SrpSpecialClassData {
+  version: string;
+  description: string;
+  specialClasses: string[];
+}
+
 class SrpLimitsService {
   private limitsData: SrpLimitsData | null = null;
+  private specialClassData: SrpSpecialClassData | null = null;
   private classToMaxPayout: Map<string, number> = new Map();
   private classToTier: Map<string, string> = new Map();
+  private specialClasses: Set<string> = new Set();
 
   async initialize(): Promise<void> {
     const limitsPath = path.join(process.cwd(), "server/staticData/srpLimits.json");
+    const specialClassPath = path.join(process.cwd(), "server/staticData/srpSpecialClass.json");
 
     if (!fs.existsSync(limitsPath)) {
       console.warn("SRP limits file not found at:", limitsPath);
@@ -39,6 +48,14 @@ class SrpLimitsService {
       }
     }
 
+    // Load special classes
+    if (fs.existsSync(specialClassPath)) {
+      const specialData = fs.readFileSync(specialClassPath, "utf-8");
+      this.specialClassData = JSON.parse(specialData) as SrpSpecialClassData;
+      this.specialClasses = new Set(this.specialClassData.specialClasses);
+      console.log(`SRP special classes loaded: ${this.specialClasses.size} classes`);
+    }
+
     console.log(`SRP limits loaded: ${this.classToMaxPayout.size} ship classes, version ${this.limitsData.version}`);
   }
 
@@ -48,6 +65,14 @@ class SrpLimitsService {
 
   getTierName(groupName: string): string | null {
     return this.classToTier.get(groupName) ?? null;
+  }
+
+  isSpecialClass(groupName: string): boolean {
+    return this.specialClasses.has(groupName);
+  }
+
+  getSpecialClasses(): string[] {
+    return Array.from(this.specialClasses);
   }
 
   getAllTiers(): SrpTier[] {

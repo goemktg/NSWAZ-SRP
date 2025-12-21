@@ -209,10 +209,8 @@ export default function NewRequest() {
   };
 
   const formatIsk = (millions: number) => {
-    if (millions >= 1000) {
-      return `${(millions / 1000).toFixed(1)}B ISK`;
-    }
-    return `${millions.toLocaleString()}M ISK`;
+    const fullAmount = millions * 1000000;
+    return `${fullAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ISK`;
   };
 
   const isParsing = parseMutation.isPending;

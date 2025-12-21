@@ -8,7 +8,8 @@ The system features a dashboard with statistics, request submission forms, reque
 
 ## User Preferences
 
-Preferred communication style: Simple, everyday language.
+- Preferred communication style: Simple, everyday language.
+- UI Language: Korean (한국어) - All user-facing text, labels, buttons, and messages are in Korean
 
 ## System Architecture
 

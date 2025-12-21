@@ -359,8 +359,8 @@ export default function NewRequest() {
                     </FormControl>
                     <FormDescription>
                       {operationType === "solo" 
-                        ? "솔로잉은 플릿 대비 50% 보상" 
-                        : "플릿 운용은 100% 보상"}
+                        ? "솔로잉 로스는 25% 보상" 
+                        : "플릿에서 발생한 로스는 50% 보상"}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -424,7 +424,7 @@ export default function NewRequest() {
                             특수롤 (Logi, Tackle, Scout 등)
                           </FormLabel>
                           <FormDescription>
-                            특수롤 수행시 20% 추가 보상
+                            특수롤 수행시 50% 추가 보상
                           </FormDescription>
                         </div>
                       </FormItem>
@@ -466,8 +466,8 @@ export default function NewRequest() {
                       {formatIsk(calculatedPayout.estimatedPayout)}
                     </div>
                     <div className="text-sm text-muted-foreground mt-2">
-                      {operationType === "fleet" ? "플릿 (100%)" : "솔로잉 (50%)"}
-                      {isSpecialRole && operationType === "fleet" && " + 특수롤 보너스 (20%)"}
+                      {operationType === "fleet" ? "플릿 (50%)" : "솔로잉 (25%)"}
+                      {isSpecialRole && operationType === "fleet" && " + 특수롤 보너스 (50%)"}
                     </div>
                   </CardContent>
                 </Card>

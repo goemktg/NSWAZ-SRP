@@ -6,6 +6,27 @@ import { insertSrpRequestSchema } from "@shared/schema";
 import { z } from "zod";
 import { shipCatalogService } from "./services/shipCatalog";
 
+interface ZKillmailData {
+  killmail_id: number;
+  zkb: {
+    hash: string;
+    totalValue: number;
+  };
+}
+
+interface ESIKillmailVictim {
+  ship_type_id: number;
+  character_id?: number;
+  corporation_id: number;
+  alliance_id?: number;
+}
+
+interface ESIKillmailData {
+  killmail_id: number;
+  killmail_time: string;
+  victim: ESIKillmailVictim;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -121,6 +142,68 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting catalog info:", error);
       res.status(500).json({ message: "Failed to get catalog info" });
+    }
+  });
+
+  // Parse killmail URL and fetch data
+  app.post("/api/killmail/parse", isAuthenticated, async (req: Request, res) => {
+    try {
+      const { url } = req.body;
+      
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ message: "URL이 필요합니다" });
+      }
+
+      // Extract killmail ID from zkillboard URL
+      const zkillMatch = url.match(/zkillboard\.com\/kill\/(\d+)/);
+      if (!zkillMatch) {
+        return res.status(400).json({ message: "올바른 zKillboard URL을 입력해주세요" });
+      }
+
+      const killmailId = zkillMatch[1];
+
+      // Fetch from zKillboard API
+      const zkillResponse = await fetch(`https://zkillboard.com/api/killID/${killmailId}/`);
+      if (!zkillResponse.ok) {
+        return res.status(400).json({ message: "킬메일 정보를 가져올 수 없습니다" });
+      }
+
+      const zkillData = await zkillResponse.json() as ZKillmailData[];
+      if (!zkillData || zkillData.length === 0) {
+        return res.status(404).json({ message: "킬메일을 찾을 수 없습니다" });
+      }
+
+      const killmail = zkillData[0];
+      const hash = killmail.zkb.hash;
+      const totalValue = killmail.zkb.totalValue;
+
+      // Fetch detailed killmail from ESI
+      const esiResponse = await fetch(
+        `https://esi.evetech.net/latest/killmails/${killmailId}/${hash}/`
+      );
+      if (!esiResponse.ok) {
+        return res.status(400).json({ message: "ESI에서 킬메일 정보를 가져올 수 없습니다" });
+      }
+
+      const esiData = await esiResponse.json() as ESIKillmailData;
+      const shipTypeId = esiData.victim.ship_type_id;
+
+      // Get ship info from our catalog
+      const ship = shipCatalogService.getShipByTypeId(shipTypeId);
+
+      res.json({
+        killmailId: parseInt(killmailId),
+        shipTypeId,
+        shipTypeName: ship?.typeName || `Unknown (${shipTypeId})`,
+        shipTypeNameKo: ship?.typeNameKo,
+        groupName: ship?.groupName,
+        iskValue: Math.round(totalValue / 1000000), // Convert to millions
+        killmailTime: esiData.killmail_time,
+        victimCharacterId: esiData.victim.character_id,
+      });
+    } catch (error) {
+      console.error("Error parsing killmail:", error);
+      res.status(500).json({ message: "킬메일 파싱에 실패했습니다" });
     }
   });
 

@@ -157,14 +157,24 @@ export default function NewRequest() {
       clearTimeout(debounceTimerRef.current);
     }
 
-    if (killmailUrl && killmailUrl.includes("zkillboard.com/kill/")) {
+    if (!killmailUrl) {
+      setParsedData(null);
+      setParseError(null);
+      setCalculatedPayout(null);
+      return;
+    }
+
+    if (killmailUrl.includes("zkillboard.com/kill/")) {
+      setParseError(null);
       debounceTimerRef.current = setTimeout(() => {
         parseMutation.mutate(killmailUrl);
       }, 500);
     } else {
       setParsedData(null);
-      setParseError(null);
       setCalculatedPayout(null);
+      debounceTimerRef.current = setTimeout(() => {
+        setParseError("유효한 zKillboard URL을 입력하세요 (예: https://zkillboard.com/kill/123456789/)");
+      }, 500);
     }
 
     return () => {

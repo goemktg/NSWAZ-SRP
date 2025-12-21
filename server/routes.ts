@@ -11,7 +11,7 @@ const SRP_POLICY = {
   FLEET_MULTIPLIER: 1.0,
   SOLO_MULTIPLIER: 0.5,
   SPECIAL_ROLE_BONUS: 0.2,
-  MAX_PAYOUT_MILLIONS: 5000,
+  MAX_PAYOUT: 5000000000, // 5B ISK in full value
 };
 
 interface ZKillmailData {
@@ -205,7 +205,7 @@ export async function registerRoutes(
         shipTypeName: ship?.typeName || `Unknown (${shipTypeId})`,
         shipTypeNameKo: ship?.typeNameKo,
         groupName: ship?.groupName,
-        iskValue: Math.round(totalValue / 1000000), // Convert to millions
+        iskValue: totalValue, // Full ISK value
         killmailTime: esiData.killmail_time,
         victimCharacterId: esiData.victim.character_id,
       });
@@ -227,8 +227,8 @@ export async function registerRoutes(
         : SRP_POLICY.SOLO_MULTIPLIER;
       const specialRoleBonus = isSpecialRole ? SRP_POLICY.SPECIAL_ROLE_BONUS : 0;
 
-      let finalAmount = Math.round(baseValue * operationMultiplier * (1 + specialRoleBonus));
-      finalAmount = Math.min(finalAmount, SRP_POLICY.MAX_PAYOUT_MILLIONS);
+      let finalAmount = baseValue * operationMultiplier * (1 + specialRoleBonus);
+      finalAmount = Math.min(finalAmount, SRP_POLICY.MAX_PAYOUT);
 
       const response: SrpCalculateResponse = {
         estimatedPayout: finalAmount,

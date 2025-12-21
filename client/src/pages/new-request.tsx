@@ -208,9 +208,8 @@ export default function NewRequest() {
     submitMutation.mutate(data);
   };
 
-  const formatIsk = (millions: number) => {
-    const fullAmount = millions * 1000000;
-    return `${fullAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ISK`;
+  const formatIsk = (value: number) => {
+    return `${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ISK`;
   };
 
   const isParsing = parseMutation.isPending;

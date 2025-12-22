@@ -38,16 +38,17 @@ The system features a dashboard with statistics, request submission forms, reque
 - **Provider**: EVE Online SSO (OAuth 2.0 Authorization Code flow)
 - **Session Storage**: PostgreSQL-backed sessions via connect-pg-simple
 - **Session Management**: Express-session with secure cookies and CSRF protection
+- **User Data Storage**: Session-only (no user tables in DB) - SeAT API is the source of truth
+- **User Identification**: seatUserId (integer) from SeAT API, stored in session
 - **Token Refresh**: Automatic access token refresh using refresh tokens
-- **Character Ownership**: Associated character IDs fetched from SeAT `/api/v2/users/{user_id}` endpoint and stored in session (`associatedCharacterIds`) for real-time validation. Used to verify killmail ownership before SRP submission. DB sync also performed as backup.
+- **Character Ownership**: Associated character IDs fetched from SeAT `/api/v2/users/{user_id}` endpoint and stored in session for killmail ownership validation
+- **Login Requirement**: User must be registered in SeAT - unregistered characters are rejected with guidance to add to SeAT
 
 ### Key Database Tables
-- `users` - User accounts with EVE character data (characterId, characterName, corporationId, allianceId, seatUserId)
-- `user_characters` - Multiple EVE characters linked to a single user account (synced from SeAT API)
-- `sessions` - Session storage for authentication
-- `user_roles` - Role assignments (member, fc, admin)
-- `ship_types` - Ship definitions with categories and base ISK values
-- `srp_requests` - SRP request submissions with status tracking (includes victimCharacterId for ownership validation)
+- `sessions` - Session storage for authentication (user data stored in session, not separate table)
+- `user_roles` - Role assignments by seatUserId (member, fc, admin)
+- `fleets` - Fleet operations created by FC/admin users (references createdBySeatUserId)
+- `srp_requests` - SRP request submissions with status tracking (references seatUserId for ownership)
 
 ### Role-Based Access Control
 - **member**: Can submit requests and view their own requests

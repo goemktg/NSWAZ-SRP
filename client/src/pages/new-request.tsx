@@ -183,6 +183,7 @@ export default function NewRequest() {
         throw new Error("유효한 플릿 UUID를 입력해주세요");
       }
       return apiRequest("POST", "/api/srp-requests", {
+        killmailId: parsedData.killmailId,
         killmailUrl: data.killmailUrl,
         shipTypeId: parsedData.shipTypeId,
         shipTypeName: parsedData.shipTypeName,

@@ -35,6 +35,19 @@ interface SeatUserCharacters {
   }>;
 }
 
+interface SeatUserInfo {
+  data: {
+    id: number;
+    name: string;
+    email: string;
+    active: boolean;
+    last_login: string;
+    last_login_source: string;
+    associated_character_ids: number[];
+    main_character_id: number;
+  };
+}
+
 export class SeatApiService {
   private apiToken: string;
 
@@ -80,6 +93,25 @@ export class SeatApiService {
   async getUserCharacters(seatUserId: number): Promise<SeatUserCharacters["data"] | null> {
     const result = await this.fetchApi<SeatUserCharacters>(`/api/v2/users/${seatUserId}/characters`);
     return result?.data || null;
+  }
+
+  async getUserById(seatUserId: number): Promise<SeatUserInfo["data"] | null> {
+    const result = await this.fetchApi<SeatUserInfo>(`/api/v2/users/${seatUserId}`);
+    return result?.data || null;
+  }
+
+  async getAssociatedCharacterIds(characterId: number): Promise<number[]> {
+    const characterSheet = await this.getCharacterSheet(characterId);
+    if (!characterSheet || !characterSheet.user_id) {
+      return [];
+    }
+
+    const userInfo = await this.getUserById(characterSheet.user_id);
+    if (!userInfo || !userInfo.associated_character_ids) {
+      return [];
+    }
+
+    return userInfo.associated_character_ids;
   }
 
   async syncUserCharacters(userId: string, mainCharacterId: number): Promise<void> {

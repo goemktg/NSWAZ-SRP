@@ -38,6 +38,7 @@ declare module "express-session" {
     refreshToken?: string;
     tokenExpiry?: number;
     oauthState?: string;
+    associatedCharacterIds?: number[];
   }
 }
 
@@ -218,10 +219,10 @@ export async function setupAuth(app: Express) {
       req.session.refreshToken = tokens.refresh_token;
       req.session.tokenExpiry = Date.now() + tokens.expires_in * 1000;
 
-      // Sync user's characters from SeAT API (async, don't block login)
-      seatApiService.syncUserCharacters(userId, characterInfo.CharacterID).catch(err => {
-        console.error("Failed to sync characters from SeAT:", err);
-      });
+      // Fetch associated character IDs from SeAT and store in session
+      const associatedCharacterIds = await seatApiService.getAssociatedCharacterIds(characterInfo.CharacterID);
+      req.session.associatedCharacterIds = associatedCharacterIds;
+      console.log(`Stored ${associatedCharacterIds.length} associated character IDs in session for user ${userId}`);
 
       res.redirect("/");
     } catch (error) {
@@ -292,10 +293,10 @@ export async function setupAuth(app: Express) {
       req.session.refreshToken = testTokens.refresh_token;
       req.session.tokenExpiry = Date.now() + testTokens.expires_in * 1000;
 
-      // Sync user's characters from SeAT API (async, don't block login)
-      seatApiService.syncUserCharacters(userId, testCharacterId).catch(err => {
-        console.error("Failed to sync characters from SeAT:", err);
-      });
+      // Fetch associated character IDs from SeAT and store in session
+      const associatedCharacterIds = await seatApiService.getAssociatedCharacterIds(testCharacterId);
+      req.session.associatedCharacterIds = associatedCharacterIds;
+      console.log(`Stored ${associatedCharacterIds.length} associated character IDs in session for test user ${userId}`);
 
       // Redirect to homepage like real SSO
       res.redirect("/");

@@ -39,6 +39,7 @@ The system features a dashboard with statistics, request submission forms, reque
 - **Session Storage**: PostgreSQL-backed sessions via connect-pg-simple
 - **Session Management**: Express-session with secure cookies and CSRF protection
 - **Token Refresh**: Automatic access token refresh using refresh tokens
+- **Character Ownership**: Associated character IDs fetched from SeAT `/api/v2/users/{user_id}` endpoint and stored in session (`associatedCharacterIds`) for real-time validation. Used to verify killmail ownership before SRP submission. DB sync also performed as backup.
 
 ### Key Database Tables
 - `users` - User accounts with EVE character data (characterId, characterName, corporationId, allianceId, seatUserId)

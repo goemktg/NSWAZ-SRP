@@ -224,6 +224,11 @@ export async function setupAuth(app: Express) {
       req.session.associatedCharacterIds = associatedCharacterIds;
       console.log(`Stored ${associatedCharacterIds.length} associated character IDs in session for user ${userId}`);
 
+      // Also sync user's characters to DB for backup/reference (async, don't block login)
+      seatApiService.syncUserCharacters(userId, characterInfo.CharacterID).catch(err => {
+        console.error("Failed to sync characters from SeAT:", err);
+      });
+
       res.redirect("/");
     } catch (error) {
       console.error("EVE SSO callback error:", error);
@@ -297,6 +302,11 @@ export async function setupAuth(app: Express) {
       const associatedCharacterIds = await seatApiService.getAssociatedCharacterIds(testCharacterId);
       req.session.associatedCharacterIds = associatedCharacterIds;
       console.log(`Stored ${associatedCharacterIds.length} associated character IDs in session for test user ${userId}`);
+
+      // Also sync user's characters to DB for backup/reference (async, don't block login)
+      seatApiService.syncUserCharacters(userId, testCharacterId).catch(err => {
+        console.error("Failed to sync characters from SeAT:", err);
+      });
 
       // Redirect to homepage like real SSO
       res.redirect("/");

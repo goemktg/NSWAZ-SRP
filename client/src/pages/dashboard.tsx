@@ -49,19 +49,31 @@ function StatCard({
   title, 
   value, 
   icon: Icon, 
-  loading 
+  loading,
+  isSiteWide = false
 }: { 
   title: string; 
   value: string | number; 
   icon: React.ElementType; 
   loading?: boolean;
+  isSiteWide?: boolean;
 }) {
   return (
-    <Card data-testid={`card-stat-${title.toLowerCase().replace(/\s/g, "-")}`}>
+    <Card 
+      data-testid={`card-stat-${title.toLowerCase().replace(/\s/g, "-")}`}
+      className={isSiteWide ? "bg-muted/50 dark:bg-muted/20 border-dashed" : ""}
+    >
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            {title}
+          </CardTitle>
+          {isSiteWide && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+              전체
+            </span>
+          )}
+        </div>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
@@ -101,22 +113,24 @@ export default function Dashboard() {
           loading={statsLoading}
         />
         <StatCard
+          title="총 지급받은 ISK"
+          value={stats ? formatIsk(stats.totalPaidOut) : "0M ISK"}
+          icon={DollarSign}
+          loading={statsLoading}
+        />
+        <StatCard
           title="오늘 승인된 요청 수"
           value={stats?.approvedToday ?? 0}
           icon={CheckCircle}
           loading={statsLoading}
-        />
-        <StatCard
-          title="총 지급된 ISK"
-          value={stats ? formatIsk(stats.totalPaidOut) : "0M ISK"}
-          icon={DollarSign}
-          loading={statsLoading}
+          isSiteWide
         />
         <StatCard
           title="평균 처리 시간"
           value={stats ? `${stats.averageProcessingHours}h` : "0h"}
           icon={Timer}
           loading={statsLoading}
+          isSiteWide
         />
       </div>
 

@@ -203,11 +203,11 @@ export default function AllRequests() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>날짜</TableHead>
+                    <TableHead>로스 날짜</TableHead>
                     <TableHead>파일럿</TableHead>
-                    <TableHead>함선</TableHead>
+                    <TableHead>로스 함선</TableHead>
                     <TableHead>함대 / FC</TableHead>
-                    <TableHead className="text-right">금액</TableHead>
+                    <TableHead className="text-right">로스 금액</TableHead>
                     <TableHead>상태</TableHead>
                     <TableHead className="text-right">작업</TableHead>
                   </TableRow>

@@ -59,6 +59,7 @@ function getOperationTypeLabel(type: string): string {
 export default function MyRequests() {
   const { data: requests, isLoading } = useQuery<SrpRequestWithDetails[]>({
     queryKey: ["/api/srp-requests/my"],
+    refetchOnMount: "always",
   });
 
   return (
@@ -96,11 +97,11 @@ export default function MyRequests() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>날짜</TableHead>
-                    <TableHead>함선</TableHead>
+                    <TableHead>로스 날짜</TableHead>
+                    <TableHead>로스 함선</TableHead>
                     <TableHead>캐릭터</TableHead>
                     <TableHead>유형</TableHead>
-                    <TableHead className="text-right">금액</TableHead>
+                    <TableHead className="text-right">로스 금액</TableHead>
                     <TableHead className="text-right">지급액</TableHead>
                     <TableHead>상태</TableHead>
                     <TableHead className="text-right">작업</TableHead>
@@ -128,7 +129,10 @@ export default function MyRequests() {
                         {request.victimCharacterName || "-"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={request.operationType === "fleet" ? "secondary" : "outline"} className="text-xs">
+                        <Badge 
+                          variant={request.operationType === "fleet" ? "secondary" : "outline"} 
+                          className={`text-xs ${request.operationType === "solo" ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800" : ""}`}
+                        >
                           {getOperationTypeLabel(request.operationType)}
                         </Badge>
                       </TableCell>

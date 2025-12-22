@@ -84,7 +84,9 @@ export const insertFleetSchema = createInsertSchema(fleets).omit({
   updatedAt: true,
   status: true,
 });
-export const insertSrpRequestSchema = createInsertSchema(srpRequests).omit({ 
+export const insertSrpRequestSchema = createInsertSchema(srpRequests, {
+  iskAmount: z.number().transform((val) => Math.round(val)),
+}).omit({ 
   id: true, 
   seatUserId: true,
   createdAt: true, 

@@ -2,7 +2,7 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./eveAuth";
-import { insertSrpRequestSchema, srpCalculateSchema, type SrpCalculateResponse, userCharacters } from "@shared/schema";
+import { insertSrpRequestSchema, srpCalculateSchema, fleetFormSchema, type SrpCalculateResponse, userCharacters } from "@shared/schema";
 import { z } from "zod";
 import { shipCatalogService } from "./services/shipCatalog";
 import { srpLimitsService } from "./services/srpLimits";
@@ -223,6 +223,134 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to get catalog info" });
     }
   });
+
+  // ============= FLEET MANAGEMENT =============
+
+  // Get active fleets (for SRP form dropdown)
+  app.get("/api/fleets/active", isAuthenticated, async (req: Request, res) => {
+    try {
+      const fleets = await storage.getActiveFleets();
+      res.json(fleets);
+    } catch (error) {
+      console.error("Error getting active fleets:", error);
+      res.status(500).json({ message: "플릿 목록을 가져올 수 없습니다" });
+    }
+  });
+
+  // Get fleet by ID (validate and fetch)
+  app.get("/api/fleets/:id", isAuthenticated, async (req: Request, res) => {
+    try {
+      const { id } = req.params;
+      const fleet = await storage.getFleet(id);
+      
+      if (!fleet) {
+        return res.status(404).json({ message: "플릿을 찾을 수 없습니다" });
+      }
+      
+      res.json(fleet);
+    } catch (error) {
+      console.error("Error getting fleet:", error);
+      res.status(500).json({ message: "플릿 정보를 가져올 수 없습니다" });
+    }
+  });
+
+  // Get my fleets (for FC users)
+  app.get("/api/fleets/my/list", isAuthenticated, async (req: Request, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const fleets = await storage.getFleets(userId);
+      res.json(fleets);
+    } catch (error) {
+      console.error("Error getting my fleets:", error);
+      res.status(500).json({ message: "플릿 목록을 가져올 수 없습니다" });
+    }
+  });
+
+  // Create fleet (FC/Admin only)
+  app.post("/api/fleets", isAuthenticated, async (req: Request, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Check if user has FC or admin role
+      const userRole = await storage.getUserRole(userId);
+      if (!userRole || !["fc", "admin"].includes(userRole.role)) {
+        return res.status(403).json({ message: "플릿 생성은 FC 또는 관리자만 가능합니다" });
+      }
+      
+      // Validate request body
+      const parsed = fleetFormSchema.safeParse({
+        ...req.body,
+        scheduledAt: new Date(req.body.scheduledAt),
+      });
+      
+      if (!parsed.success) {
+        return res.status(400).json({ 
+          message: "잘못된 요청 데이터입니다",
+          errors: parsed.error.flatten().fieldErrors 
+        });
+      }
+      
+      // Get FC character name from session
+      const fcName = req.session.characterName || "Unknown FC";
+      
+      const fleet = await storage.createFleet(userId, fcName, {
+        operationName: parsed.data.operationName,
+        description: parsed.data.description,
+        scheduledAt: parsed.data.scheduledAt,
+        location: parsed.data.location,
+        createdByUserId: userId,
+        fcCharacterName: fcName,
+      });
+      
+      res.status(201).json(fleet);
+    } catch (error) {
+      console.error("Error creating fleet:", error);
+      res.status(500).json({ message: "플릿 생성에 실패했습니다" });
+    }
+  });
+
+  // Update fleet status (FC owner or Admin only)
+  app.patch("/api/fleets/:id/status", isAuthenticated, async (req: Request, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      if (!["active", "completed", "cancelled"].includes(status)) {
+        return res.status(400).json({ message: "잘못된 상태입니다" });
+      }
+      
+      const fleet = await storage.getFleet(id);
+      if (!fleet) {
+        return res.status(404).json({ message: "플릿을 찾을 수 없습니다" });
+      }
+      
+      // Check permission (owner or admin)
+      const userRole = await storage.getUserRole(userId);
+      if (fleet.createdByUserId !== userId && userRole?.role !== "admin") {
+        return res.status(403).json({ message: "권한이 없습니다" });
+      }
+      
+      const updated = await storage.updateFleet(id, { status: status as any });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating fleet status:", error);
+      res.status(500).json({ message: "플릿 상태 변경에 실패했습니다" });
+    }
+  });
+
+  // ============= END FLEET MANAGEMENT =============
 
   // Parse killmail URL and fetch data
   app.post("/api/killmail/parse", isAuthenticated, async (req: Request, res) => {
@@ -477,6 +605,26 @@ export async function registerRoutes(
       } else {
         // Session has no character data - log warning but allow (fallback for SeAT downtime)
         console.warn(`User ${userId} submitting SRP without session character validation - SeAT data may have been unavailable during login`);
+      }
+      
+      // Validate fleet UUID if operation type is fleet
+      if (validated.operationType === "fleet") {
+        if (!validated.fleetId) {
+          return res.status(400).json({ 
+            message: "플릿 운용시 플릿 UUID를 입력해주세요." 
+          });
+        }
+        
+        const fleet = await storage.getFleet(validated.fleetId);
+        if (!fleet) {
+          return res.status(400).json({ 
+            message: "유효하지 않은 플릿 UUID입니다. FC에게 올바른 UUID를 받으세요." 
+          });
+        }
+        
+        // Auto-fill fleet name and FC name from fleet data for backward compatibility
+        validated.fleetName = fleet.operationName;
+        validated.fcName = fleet.fcCharacterName;
       }
       
       const request = await storage.createSrpRequest(userId, validated);

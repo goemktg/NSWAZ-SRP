@@ -9,7 +9,10 @@ import {
   FileText,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Users,
+  Calendar,
+  MapPin
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -239,16 +242,66 @@ export default function RequestDetail() {
               )}
             </div>
             <Separator />
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-muted-foreground">함대명</Label>
-                <p className="font-medium">{request.fleetName || "-"}</p>
+            {request.fleet ? (
+              <div className="space-y-3" data-testid="card-fleet-details">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-muted-foreground">플릿 정보</Label>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-muted-foreground text-xs">작전명</Label>
+                    <p className="font-medium">{request.fleet.operationName}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs">FC</Label>
+                    <p className="font-medium">{request.fleet.fcCharacterName}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-muted-foreground text-xs flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      일시
+                    </Label>
+                    <p className="text-sm">{formatDate(request.fleet.scheduledAt)}</p>
+                  </div>
+                  {request.fleet.location && (
+                    <div>
+                      <Label className="text-muted-foreground text-xs flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        장소
+                      </Label>
+                      <p className="text-sm">{request.fleet.location}</p>
+                    </div>
+                  )}
+                </div>
+                {request.fleet.description && (
+                  <div>
+                    <Label className="text-muted-foreground text-xs">설명</Label>
+                    <p className="text-sm">{request.fleet.description}</p>
+                  </div>
+                )}
               </div>
-              <div>
-                <Label className="text-muted-foreground">FC 이름</Label>
-                <p className="font-medium">{request.fcName || "-"}</p>
+            ) : request.fleetName ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">함대명</Label>
+                  <p className="font-medium">{request.fleetName}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">FC 이름</Label>
+                  <p className="font-medium">{request.fcName || "-"}</p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">운용 유형</Label>
+                  <p className="font-medium">{request.operationType === "solo" ? "솔로" : "플릿"}</p>
+                </div>
+              </div>
+            )}
             <Separator />
             <div>
               <Label className="text-muted-foreground">손실 설명</Label>

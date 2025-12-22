@@ -6,7 +6,8 @@ import {
   ClipboardCheck, 
   Settings,
   Shield,
-  Rocket
+  Rocket,
+  Users
 } from "lucide-react";
 import {
   Sidebar,
@@ -29,6 +30,10 @@ const memberItems = [
   { title: "대시보드", url: "/", icon: LayoutDashboard },
   { title: "새 요청", url: "/new-request", icon: PlusCircle },
   { title: "나의 요청", url: "/my-requests", icon: FileText },
+];
+
+const fcItems = [
+  { title: "플릿 관리", url: "/fleet-management", icon: Users },
 ];
 
 const adminItems = [
@@ -84,6 +89,29 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center gap-2">
+              <Users className="h-3 w-3" />
+              FC 도구
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {fcItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location === item.url}>
+                      <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {isAdmin && (
           <SidebarGroup>

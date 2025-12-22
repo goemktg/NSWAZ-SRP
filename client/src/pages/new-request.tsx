@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { z } from "zod";
-import { Loader2, HelpCircle, CheckCircle2, AlertCircle, ExternalLink, Calculator } from "lucide-react";
+import { Loader2, HelpCircle, CheckCircle2, AlertCircle, ExternalLink, Calculator, Users, Calendar, MapPin } from "lucide-react";
+import type { Fleet } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -50,17 +51,16 @@ const formSchema = z.object({
   ),
   operationType: z.enum(["solo", "fleet"]),
   isSpecialRole: z.boolean().default(false),
-  fleetName: z.string().optional(),
-  fcName: z.string().optional(),
+  fleetId: z.string().optional(),
   lossDescription: z.string().optional(),
 }).refine(
   (data) => {
     if (data.operationType === "fleet") {
-      return data.fleetName && data.fleetName.length > 0 && data.fcName && data.fcName.length > 0;
+      return data.fleetId && data.fleetId.length > 0;
     }
     return true;
   },
-  { message: "플릿 운용시 함대명과 FC 이름을 입력해주세요", path: ["fleetName"] }
+  { message: "플릿 운용시 플릿 UUID를 입력해주세요", path: ["fleetId"] }
 );
 
 type FormValues = z.infer<typeof formSchema>;
@@ -71,7 +71,10 @@ export default function NewRequest() {
   const [parsedData, setParsedData] = useState<ParsedKillmail | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [calculatedPayout, setCalculatedPayout] = useState<SrpCalculateResponse | null>(null);
+  const [fleetData, setFleetData] = useState<Fleet | null>(null);
+  const [fleetError, setFleetError] = useState<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const fleetDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -79,8 +82,7 @@ export default function NewRequest() {
       killmailUrl: "",
       operationType: "fleet",
       isSpecialRole: false,
-      fleetName: "",
-      fcName: "",
+      fleetId: "",
       lossDescription: "",
     },
   });
@@ -88,13 +90,60 @@ export default function NewRequest() {
   const operationType = form.watch("operationType");
   const isSpecialRole = form.watch("isSpecialRole");
   const killmailUrl = form.watch("killmailUrl");
+  const fleetId = form.watch("fleetId");
 
   // Reset isSpecialRole when switching to solo
   useEffect(() => {
     if (operationType === "solo") {
       form.setValue("isSpecialRole", false);
+      setFleetData(null);
+      setFleetError(null);
     }
   }, [operationType, form]);
+
+  // Fleet lookup with debounce
+  useEffect(() => {
+    if (fleetDebounceRef.current) {
+      clearTimeout(fleetDebounceRef.current);
+    }
+
+    if (!fleetId || operationType !== "fleet") {
+      setFleetData(null);
+      setFleetError(null);
+      return;
+    }
+
+    // UUID format validation
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(fleetId)) {
+      setFleetData(null);
+      setFleetError(null);
+      return;
+    }
+
+    fleetDebounceRef.current = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/fleets/${fleetId}`, { credentials: "include" });
+        if (response.ok) {
+          const data = await response.json() as Fleet;
+          setFleetData(data);
+          setFleetError(null);
+        } else {
+          setFleetData(null);
+          setFleetError("유효하지 않은 플릿 UUID입니다");
+        }
+      } catch {
+        setFleetData(null);
+        setFleetError("플릿 정보를 가져오는데 실패했습니다");
+      }
+    }, 300);
+
+    return () => {
+      if (fleetDebounceRef.current) {
+        clearTimeout(fleetDebounceRef.current);
+      }
+    };
+  }, [fleetId, operationType]);
 
   const parseMutation = useMutation({
     mutationFn: async (url: string) => {
@@ -130,6 +179,9 @@ export default function NewRequest() {
       if (!parsedData) {
         throw new Error("킬메일 정보를 먼저 파싱해주세요");
       }
+      if (data.operationType === "fleet" && !fleetData) {
+        throw new Error("유효한 플릿 UUID를 입력해주세요");
+      }
       return apiRequest("POST", "/api/srp-requests", {
         killmailUrl: data.killmailUrl,
         shipTypeId: parsedData.shipTypeId,
@@ -137,8 +189,7 @@ export default function NewRequest() {
         iskAmount: parsedData.iskValue,
         operationType: data.operationType,
         isSpecialRole: data.isSpecialRole ? 1 : 0,
-        fleetName: data.operationType === "fleet" ? data.fleetName : null,
-        fcName: data.operationType === "fleet" ? data.fcName : null,
+        fleetId: data.operationType === "fleet" ? data.fleetId : null,
         lossDescription: data.lossDescription,
         victimCharacterId: parsedData.victimCharacterId,
         victimCharacterName: parsedData.victimCharacterName,
@@ -410,43 +461,81 @@ export default function NewRequest() {
 
               {operationType === "fleet" && (
                 <>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <FormField
-                      control={form.control}
-                      name="fleetName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>함대명</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="예: 방어 플릿"
-                              data-testid="input-fleet-name"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  <FormField
+                    control={form.control}
+                    name="fleetId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          플릿 UUID
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>FC에게 받은 플릿 UUID를 붙여넣으세요. UUID는 FC 도구에서 생성됩니다.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="예: 12345678-1234-1234-1234-123456789abc"
+                            className="font-mono"
+                            data-testid="input-fleet-uuid"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          FC에게 받은 플릿 UUID를 입력하세요
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                    <FormField
-                      control={form.control}
-                      name="fcName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>FC 이름</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="함대 사령관 이름"
-                              data-testid="input-fc-name"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  {fleetError && (
+                    <div className="flex items-center gap-2 text-destructive" data-testid="status-fleet-error">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>{fleetError}</span>
+                    </div>
+                  )}
+
+                  {fleetData && (
+                    <Card className="bg-muted/50" data-testid="card-fleet-info">
+                      <CardContent className="pt-4">
+                        <div className="flex items-start gap-2 mb-3">
+                          <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+                          <span className="font-medium">플릿 정보 확인됨</span>
+                        </div>
+                        <div className="grid gap-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">작전명:</span>
+                            <span className="font-medium" data-testid="text-fleet-operation">
+                              {fleetData.operationName}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">FC:</span>
+                            <span data-testid="text-fleet-fc">
+                              {fleetData.fcCharacterName}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">일시:</span>
+                            <span data-testid="text-fleet-time">
+                              {new Date(fleetData.scheduledAt).toLocaleString("ko-KR")}
+                            </span>
+                          </div>
+                          {fleetData.location && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">장소:</span>
+                              <span data-testid="text-fleet-location">{fleetData.location}</span>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
                   <FormField
                     control={form.control}
@@ -536,7 +625,13 @@ export default function NewRequest() {
               <div className="flex gap-3">
                 <Button
                   type="submit"
-                  disabled={submitMutation.isPending || !parsedData || isParsing || parsedData?.isOwnedCharacter === false}
+                  disabled={
+                    submitMutation.isPending || 
+                    !parsedData || 
+                    isParsing || 
+                    parsedData?.isOwnedCharacter === false ||
+                    (operationType === "fleet" && !fleetData)
+                  }
                   data-testid="button-submit"
                 >
                   {submitMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

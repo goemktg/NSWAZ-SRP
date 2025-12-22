@@ -226,8 +226,8 @@ export default function AllRequests() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         <div className="flex flex-col">
-                          <span>{request.fleetName || "-"}</span>
-                          <span className="text-xs">{request.fcName}</span>
+                          <span>{request.fleet?.operationName || request.fleetName || "-"}</span>
+                          <span className="text-xs">{request.fleet?.fcCharacterName || request.fcName}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">

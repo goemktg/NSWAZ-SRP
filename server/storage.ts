@@ -2,16 +2,19 @@ import {
   users, 
   userRoles, 
   srpRequests,
+  fleets,
   type User,
   type UserRole,
   type InsertUserRole,
+  type Fleet,
+  type InsertFleet,
   type SrpRequest,
   type InsertSrpRequest,
   type SrpRequestWithDetails,
   type DashboardStats
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, count } from "drizzle-orm";
+import { eq, desc, and, sql, count, gte } from "drizzle-orm";
 import { shipCatalogService } from "./services/shipCatalog";
 
 export interface IStorage {
@@ -19,6 +22,13 @@ export interface IStorage {
   getUserRole(userId: string): Promise<UserRole | undefined>;
   createUserRole(data: InsertUserRole): Promise<UserRole>;
   updateUserRole(userId: string, role: string): Promise<UserRole | undefined>;
+
+  // Fleets
+  getFleets(createdByUserId?: string): Promise<Fleet[]>;
+  getFleet(id: string): Promise<Fleet | undefined>;
+  getActiveFleets(): Promise<Fleet[]>;
+  createFleet(userId: string, fcName: string, data: InsertFleet): Promise<Fleet>;
+  updateFleet(id: string, data: Partial<Fleet>): Promise<Fleet | undefined>;
 
   // SRP Requests
   getSrpRequests(userId?: string, status?: string): Promise<SrpRequestWithDetails[]>;
@@ -52,6 +62,52 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
+  // Fleets
+  async getFleets(createdByUserId?: string): Promise<Fleet[]> {
+    if (createdByUserId) {
+      return await db.select().from(fleets)
+        .where(eq(fleets.createdByUserId, createdByUserId))
+        .orderBy(desc(fleets.scheduledAt));
+    }
+    return await db.select().from(fleets)
+      .orderBy(desc(fleets.scheduledAt));
+  }
+
+  async getFleet(id: string): Promise<Fleet | undefined> {
+    const [fleet] = await db.select().from(fleets).where(eq(fleets.id, id));
+    return fleet || undefined;
+  }
+
+  async getActiveFleets(): Promise<Fleet[]> {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    return await db.select().from(fleets)
+      .where(and(
+        eq(fleets.status, "active"),
+        gte(fleets.scheduledAt, sevenDaysAgo)
+      ))
+      .orderBy(desc(fleets.scheduledAt));
+  }
+
+  async createFleet(userId: string, fcName: string, data: InsertFleet): Promise<Fleet> {
+    const [fleet] = await db.insert(fleets).values({
+      ...data,
+      createdByUserId: userId,
+      fcCharacterName: fcName,
+      status: "active",
+    }).returning();
+    return fleet;
+  }
+
+  async updateFleet(id: string, data: Partial<Fleet>): Promise<Fleet | undefined> {
+    const [updated] = await db.update(fleets)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(fleets.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
   // SRP Requests
   async getSrpRequests(userId?: string, status?: string): Promise<SrpRequestWithDetails[]> {
     let conditions = [];
@@ -76,14 +132,23 @@ export class DatabaseStorage implements IStorage {
     
     const userMap = new Map(pilotUsers.map(u => [u.id, u]));
 
+    // Get fleet info for requests that have fleetId
+    const fleetIds = Array.from(new Set(requests.filter(r => r.fleetId).map(r => r.fleetId!)));
+    const fleetList = fleetIds.length > 0
+      ? await db.select().from(fleets).where(sql`${fleets.id} = ANY(ARRAY[${sql.join(fleetIds.map(id => sql`${id}`), sql`, `)}])`)
+      : [];
+    const fleetMap = new Map(fleetList.map(f => [f.id, f]));
+
     return requests.map(r => {
       const shipData = shipCatalogService.getShipByTypeId(r.shipTypeId);
       const user = userMap.get(r.userId);
+      const fleet = r.fleetId ? fleetMap.get(r.fleetId) : undefined;
       
       return {
         ...r,
         shipData: shipData,
         pilotName: user?.characterName || "알 수 없는 파일럿",
+        fleet,
       };
     });
   }
@@ -102,10 +167,18 @@ export class DatabaseStorage implements IStorage {
     const [pilot] = await db.select().from(users).where(eq(users.id, request.userId));
     const pilotName = pilot?.characterName || "알 수 없는 파일럿";
 
+    // Get fleet info if linked
+    let fleet = undefined;
+    if (request.fleetId) {
+      const [f] = await db.select().from(fleets).where(eq(fleets.id, request.fleetId));
+      fleet = f || undefined;
+    }
+
     return {
       ...request,
       shipData,
       pilotName,
+      fleet,
     };
   }
 

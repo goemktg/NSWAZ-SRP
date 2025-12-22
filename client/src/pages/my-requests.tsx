@@ -102,7 +102,7 @@ export default function MyRequests() {
                         {request.shipData?.typeName || request.shipTypeName || "알 수 없음"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {request.fleetName || "-"}
+                        {request.fleet?.operationName || request.fleetName || "-"}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {request.iskAmount}M

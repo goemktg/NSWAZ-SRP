@@ -192,7 +192,7 @@ export default function RequestDetail() {
 
         if (response.ok) {
           const data: SrpCalculateResponse = await response.json();
-          setPayoutAmount(data.estimatedPayout);
+          setPayoutAmount(Math.round(data.estimatedPayout));
           setCalculatedPayout(data);
         } else {
           setPayoutAmount(request.iskAmount);

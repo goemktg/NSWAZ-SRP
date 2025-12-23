@@ -14,7 +14,7 @@ import {
   Calendar,
   MapPin
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -106,6 +106,7 @@ export default function RequestDetail() {
   });
   const [reviewNote, setReviewNote] = useState("");
   const [payoutAmount, setPayoutAmount] = useState<number>(0);
+  const [isCalculating, setIsCalculating] = useState(false);
   
   const handleBack = () => {
     if (fromPage === "all-requests") {
@@ -161,9 +162,47 @@ export default function RequestDetail() {
 
   const openReviewDialog = (action: ReviewAction) => {
     setReviewDialog({ open: true, action });
-    setPayoutAmount(request?.iskAmount || 0);
+    setPayoutAmount(0);
     setReviewNote("");
   };
+
+  useEffect(() => {
+    const calculatePayout = async () => {
+      if (!reviewDialog.open || reviewDialog.action !== "approve" || !request) {
+        return;
+      }
+
+      setIsCalculating(true);
+      
+      try {
+        const response = await fetch("/api/killmail/calculate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            iskValue: request.iskAmount,
+            operationType: request.operationType,
+            isSpecialRole: request.isSpecialRole || false,
+            groupName: request.shipData?.groupName || null,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setPayoutAmount(data.calculatedAmount);
+        } else {
+          setPayoutAmount(request.iskAmount);
+        }
+      } catch (error) {
+        console.error("Failed to calculate payout:", error);
+        setPayoutAmount(request.iskAmount);
+      } finally {
+        setIsCalculating(false);
+      }
+    };
+
+    calculatePayout();
+  }, [reviewDialog.open, reviewDialog.action, request]);
 
   const closeDialog = () => {
     setReviewDialog({ open: false, action: null });
@@ -434,14 +473,27 @@ export default function RequestDetail() {
           <div className="space-y-4 py-4">
             {reviewDialog.action === "approve" && (
               <div className="space-y-2">
-                <Label htmlFor="payout">지급 금액 (백만 ISK 단위)</Label>
-                <Input
-                  id="payout"
-                  type="number"
-                  value={payoutAmount}
-                  onChange={(e) => setPayoutAmount(Number(e.target.value))}
-                  data-testid="input-payout-amount"
-                />
+                <Label htmlFor="payout">지급 금액 (ISK)</Label>
+                <div className="relative">
+                  <Input
+                    id="payout"
+                    type="number"
+                    value={payoutAmount}
+                    onChange={(e) => setPayoutAmount(Number(e.target.value))}
+                    disabled={isCalculating}
+                    data-testid="input-payout-amount"
+                  />
+                  {isCalculating && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-md">
+                      <span className="text-sm text-muted-foreground">계산 중...</span>
+                    </div>
+                  )}
+                </div>
+                {!isCalculating && payoutAmount > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {formatIsk(payoutAmount)}
+                  </p>
+                )}
               </div>
             )}
             <div className="space-y-2">

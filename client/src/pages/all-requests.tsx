@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { 
@@ -101,6 +101,7 @@ export default function AllRequests() {
   }>({ open: false, request: null, action: null });
   const [reviewNote, setReviewNote] = useState("");
   const [payoutAmount, setPayoutAmount] = useState<number>(0);
+  const [isCalculating, setIsCalculating] = useState(false);
 
   const { data: requests, isLoading } = useQuery<SrpRequestWithDetails[]>({
     queryKey: [`/api/srp-requests/all/${statusFilter}`],
@@ -145,9 +146,48 @@ export default function AllRequests() {
 
   const openReviewDialog = (request: SrpRequestWithDetails, action: ReviewAction) => {
     setReviewDialog({ open: true, request, action });
-    setPayoutAmount(request.iskAmount);
+    setPayoutAmount(0);
     setReviewNote("");
   };
+
+  useEffect(() => {
+    const calculatePayout = async () => {
+      if (!reviewDialog.open || reviewDialog.action !== "approve" || !reviewDialog.request) {
+        return;
+      }
+
+      const request = reviewDialog.request;
+      setIsCalculating(true);
+      
+      try {
+        const response = await fetch("/api/killmail/calculate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            iskValue: request.iskAmount,
+            operationType: request.operationType,
+            isSpecialRole: request.isSpecialRole || false,
+            groupName: request.shipData?.groupName || null,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setPayoutAmount(data.calculatedAmount);
+        } else {
+          setPayoutAmount(request.iskAmount);
+        }
+      } catch (error) {
+        console.error("Failed to calculate payout:", error);
+        setPayoutAmount(request.iskAmount);
+      } finally {
+        setIsCalculating(false);
+      }
+    };
+
+    calculatePayout();
+  }, [reviewDialog.open, reviewDialog.action, reviewDialog.request]);
 
   const closeDialog = () => {
     setReviewDialog({ open: false, request: null, action: null });
@@ -377,14 +417,27 @@ export default function AllRequests() {
           <div className="space-y-4 py-4">
             {reviewDialog.action === "approve" && (
               <div className="space-y-2">
-                <Label htmlFor="payout">지급 금액 (백만 ISK 단위)</Label>
-                <Input
-                  id="payout"
-                  type="number"
-                  value={payoutAmount}
-                  onChange={(e) => setPayoutAmount(Number(e.target.value))}
-                  data-testid="input-payout-amount"
-                />
+                <Label htmlFor="payout">지급 금액 (ISK)</Label>
+                <div className="relative">
+                  <Input
+                    id="payout"
+                    type="number"
+                    value={payoutAmount}
+                    onChange={(e) => setPayoutAmount(Number(e.target.value))}
+                    disabled={isCalculating}
+                    data-testid="input-payout-amount"
+                  />
+                  {isCalculating && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-md">
+                      <span className="text-sm text-muted-foreground">계산 중...</span>
+                    </div>
+                  )}
+                </div>
+                {!isCalculating && payoutAmount > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {formatIsk(payoutAmount)} ISK
+                  </p>
+                )}
               </div>
             )}
             <div className="space-y-2">

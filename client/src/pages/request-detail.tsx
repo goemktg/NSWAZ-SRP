@@ -39,7 +39,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { SrpRequestWithDetails } from "@shared/schema";
+import type { SrpRequestWithDetails, SrpCalculateResponse } from "@shared/schema";
 
 function getStatusVariant(status: string): "default" | "destructive" | "secondary" | "outline" {
   switch (status) {
@@ -107,6 +107,7 @@ export default function RequestDetail() {
   const [reviewNote, setReviewNote] = useState("");
   const [payoutAmount, setPayoutAmount] = useState<number>(0);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [calculatedPayout, setCalculatedPayout] = useState<SrpCalculateResponse | null>(null);
   
   const handleBack = () => {
     if (fromPage === "all-requests") {
@@ -164,6 +165,7 @@ export default function RequestDetail() {
     setReviewDialog({ open: true, action });
     setPayoutAmount(0);
     setReviewNote("");
+    setCalculatedPayout(null);
   };
 
   useEffect(() => {
@@ -180,6 +182,7 @@ export default function RequestDetail() {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
+            shipTypeId: request.shipTypeId,
             iskValue: request.iskAmount,
             operationType: request.operationType,
             isSpecialRole: request.isSpecialRole || false,
@@ -188,14 +191,17 @@ export default function RequestDetail() {
         });
 
         if (response.ok) {
-          const data = await response.json();
+          const data: SrpCalculateResponse = await response.json();
           setPayoutAmount(data.estimatedPayout);
+          setCalculatedPayout(data);
         } else {
           setPayoutAmount(request.iskAmount);
+          setCalculatedPayout(null);
         }
       } catch (error) {
         console.error("Failed to calculate payout:", error);
         setPayoutAmount(request.iskAmount);
+        setCalculatedPayout(null);
       } finally {
         setIsCalculating(false);
       }
@@ -208,6 +214,7 @@ export default function RequestDetail() {
     setReviewDialog({ open: false, action: null });
     setReviewNote("");
     setPayoutAmount(0);
+    setCalculatedPayout(null);
   };
 
   const handleReview = () => {
@@ -472,9 +479,44 @@ export default function RequestDetail() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             {reviewDialog.action === "approve" && (
-              <div className="space-y-2">
-                <Label htmlFor="payout">지급 금액 (ISK)</Label>
-                <div className="relative">
+              <div className="space-y-3">
+                {isCalculating ? (
+                  <div className="flex items-center justify-center py-4">
+                    <span className="text-sm text-muted-foreground">SRP 금액 계산 중...</span>
+                  </div>
+                ) : calculatedPayout && (
+                  <div className="p-3 rounded-md bg-primary/5 border border-primary/20">
+                    <div className="text-sm text-muted-foreground mb-1">예상 SRP 지급액</div>
+                    <div className="text-lg font-bold text-primary">
+                      {formatIsk(calculatedPayout.estimatedPayout)}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                      <div>
+                        {request?.operationType === "fleet" 
+                          ? (calculatedPayout.breakdown.isSpecialRole ? "플릿 + 특수롤 (100%)" : "플릿 (50%)")
+                          : calculatedPayout.breakdown.isSpecialShipClass 
+                            ? "솔로잉 + 지원함급 보너스 (100%)" 
+                            : "솔로잉 (25%)"
+                        }
+                      </div>
+                      {(() => {
+                        const { baseValue, operationMultiplier, finalAmount, maxPayout } = calculatedPayout.breakdown;
+                        const calculatedAmount = baseValue * operationMultiplier;
+                        if (finalAmount < calculatedAmount && maxPayout < calculatedAmount) {
+                          const reductionPercent = Math.round((1 - finalAmount / calculatedAmount) * 100);
+                          return (
+                            <div className="text-amber-600 dark:text-amber-400">
+                              함급별 총액 제한 (-{reductionPercent}%)
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="payout">지급 금액 (ISK) - 수정 가능</Label>
                   <Input
                     id="payout"
                     type="number"
@@ -483,17 +525,12 @@ export default function RequestDetail() {
                     disabled={isCalculating}
                     data-testid="input-payout-amount"
                   />
-                  {isCalculating && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-md">
-                      <span className="text-sm text-muted-foreground">계산 중...</span>
-                    </div>
+                  {!isCalculating && payoutAmount > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {formatIsk(payoutAmount)}
+                    </p>
                   )}
                 </div>
-                {!isCalculating && payoutAmount > 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {formatIsk(payoutAmount)}
-                  </p>
-                )}
               </div>
             )}
             <div className="space-y-2">

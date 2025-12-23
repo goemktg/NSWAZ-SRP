@@ -246,20 +246,15 @@ export async function setupAuth(app: Express) {
     }
 
     try {
-      // Supported test characters with their roles
-      const testCharacters: Record<number, string> = {
-        96386549: "member",
-        94403590: "fc",
-      };
-
       const characterIdParam = req.query.characterId as string;
-      const testCharacterId = characterIdParam ? parseInt(characterIdParam, 10) : 96386549;
-      
-      if (!testCharacters[testCharacterId]) {
-        return res.redirect("/?error=invalid_test_character");
+      if (!characterIdParam) {
+        return res.redirect("/?error=character_id_required");
       }
       
-      const role = testCharacters[testCharacterId];
+      const testCharacterId = parseInt(characterIdParam, 10);
+      if (isNaN(testCharacterId)) {
+        return res.redirect("/?error=invalid_character_id");
+      }
       
       // Fetch user data from SeAT
       const userData = await fetchUserDataFromSeat(testCharacterId);
@@ -268,14 +263,11 @@ export async function setupAuth(app: Express) {
         return res.redirect("/?error=seat_user_not_found");
       }
 
-      // Ensure role is set for test character
+      // Create member role if no role exists (role can be changed via DB)
       const existingRole = await storage.getUserRole(userData.seatUserId);
       if (!existingRole) {
-        await storage.createUserRole({ seatUserId: userData.seatUserId, role: role as "member" | "fc" | "admin" });
-        console.log(`Created ${role} role for seatUserId ${userData.seatUserId}`);
-      } else if (existingRole.role !== role) {
-        await storage.updateUserRole(userData.seatUserId, role);
-        console.log(`Updated role to ${role} for seatUserId ${userData.seatUserId}`);
+        await storage.createUserRole({ seatUserId: userData.seatUserId, role: "member" });
+        console.log(`Created member role for seatUserId ${userData.seatUserId}`);
       }
 
       req.session.user = userData;
@@ -283,7 +275,7 @@ export async function setupAuth(app: Express) {
       req.session.refreshToken = `test_refresh_token_${Date.now()}`;
       req.session.tokenExpiry = Date.now() + 1200 * 1000;
 
-      console.log(`Test login: seatUserId=${userData.seatUserId}, characterName=${userData.mainCharacterName}, role=${role}`);
+      console.log(`Test login: seatUserId=${userData.seatUserId}, characterName=${userData.mainCharacterName}`);
 
       res.redirect("/");
     } catch (error) {

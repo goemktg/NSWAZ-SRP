@@ -233,9 +233,9 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
-  // Stats (personal stats for a specific user)
+  // Stats (mix of personal and global stats)
   async getDashboardStats(seatUserId: number): Promise<DashboardStats> {
-    // User's pending count
+    // PERSONAL: User's pending count
     const [{ count: pendingCount }] = await db
       .select({ count: count() })
       .from(srpRequests)
@@ -244,19 +244,7 @@ export class DatabaseStorage implements IStorage {
         eq(srpRequests.status, "pending")
       ));
 
-    // User's approved today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const [{ count: approvedToday }] = await db
-      .select({ count: count() })
-      .from(srpRequests)
-      .where(and(
-        eq(srpRequests.seatUserId, seatUserId),
-        eq(srpRequests.status, "approved"),
-        sql`${srpRequests.reviewedAt} >= ${today}`
-      ));
-
-    // User's total received payout
+    // PERSONAL: User's total received payout
     const [paidResult] = await db
       .select({ total: sql<number>`COALESCE(SUM(${srpRequests.payoutAmount}), 0)` })
       .from(srpRequests)
@@ -265,16 +253,24 @@ export class DatabaseStorage implements IStorage {
         eq(srpRequests.status, "approved")
       ));
 
-    // User's average processing time (in hours)
+    // GLOBAL: Approved today (all users)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [{ count: approvedToday }] = await db
+      .select({ count: count() })
+      .from(srpRequests)
+      .where(and(
+        eq(srpRequests.status, "approved"),
+        sql`${srpRequests.reviewedAt} >= ${today}`
+      ));
+
+    // GLOBAL: Average processing time (all users)
     const [avgResult] = await db
       .select({ 
         avg: sql<number>`COALESCE(AVG(EXTRACT(EPOCH FROM (${srpRequests.reviewedAt} - ${srpRequests.createdAt})) / 3600), 0)` 
       })
       .from(srpRequests)
-      .where(and(
-        eq(srpRequests.seatUserId, seatUserId),
-        sql`${srpRequests.reviewedAt} IS NOT NULL`
-      ));
+      .where(sql`${srpRequests.reviewedAt} IS NOT NULL`);
 
     return {
       pendingCount: Number(pendingCount) || 0,

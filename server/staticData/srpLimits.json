@@ -1,0 +1,78 @@
+{
+  "version": "2025-12-21",
+  "description": "Solo SRP payout limits by ship class tier",
+  "tiers": [
+    {
+      "name": "Frigate",
+      "maxPayout": 30000000,
+      "classes": [
+        "Frigate",
+        "Assault Frigate",
+        "Covert Ops",
+        "Electronic Attack Ship",
+        "Interceptor",
+        "Logistics Frigate",
+        "Expedition Frigate",
+        "Prototype Exploration Ship",
+        "Stealth Bomber"
+      ]
+    },
+    {
+      "name": "Destroyer",
+      "maxPayout": 60000000,
+      "classes": [
+        "Destroyer",
+        "Command Destroyer",
+        "Interdictor",
+        "Tactical Destroyer"
+      ]
+    },
+    {
+      "name": "Cruiser",
+      "maxPayout": 120000000,
+      "classes": [
+        "Cruiser",
+        "Combat Recon Ship",
+        "Force Recon Ship",
+        "Heavy Assault Cruiser",
+        "Heavy Interdiction Cruiser",
+        "Logistics",
+        "Strategic Cruiser",
+        "Blockade Runner",
+        "Deep Space Transport",
+        "Mining Barge",
+        "Exhumer",
+        "Flag Cruiser",
+        "Hauler"
+      ]
+    },
+    {
+      "name": "Battlecruiser",
+      "maxPayout": 180000000,
+      "classes": ["Combat Battlecruiser", "Command Ship", "Attack Battlecruiser", "Expedition Command Ship"]
+    },
+    {
+      "name": "Battleship",
+      "maxPayout": 240000000,
+      "classes": ["Battleship", "Black Ops", "Marauder"]
+    },
+    {
+      "name": "Capital",
+      "maxPayout": 240000000,
+      "classes": [
+        "Carrier",
+        "Dreadnought",
+        "Force Auxiliary",
+        "Supercarrier",
+        "Titan",
+        "Capital Industrial Ship",
+        "Lancer Dreadnought"
+      ]
+    },
+    {
+      "name": "Specialty",
+      "maxPayout": 0,
+      "classes": ["Shuttle", "Capsule", "Corvette", "Industrial Command Ship", "Freighter", "Jump Freighter"]
+    }
+  ]
+}

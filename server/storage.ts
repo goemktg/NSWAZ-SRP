@@ -1,49 +1,50 @@
 import { 
-  users, 
   userRoles, 
-  shipTypes, 
   srpRequests,
-  type User,
+  fleets,
   type UserRole,
   type InsertUserRole,
-  type ShipType,
-  type InsertShipType,
+  type Fleet,
+  type InsertFleet,
   type SrpRequest,
   type InsertSrpRequest,
   type SrpRequestWithDetails,
   type DashboardStats
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, count } from "drizzle-orm";
+import { eq, desc, and, sql, count, gte } from "drizzle-orm";
+import { shipCatalogService } from "./services/shipCatalog";
 
 export interface IStorage {
-  // User roles
-  getUserRole(userId: string): Promise<UserRole | undefined>;
+  // User roles (mapped by seatUserId)
+  getUserRole(seatUserId: number): Promise<UserRole | undefined>;
   createUserRole(data: InsertUserRole): Promise<UserRole>;
-  updateUserRole(userId: string, role: string): Promise<UserRole | undefined>;
+  updateUserRole(seatUserId: number, role: string): Promise<UserRole | undefined>;
 
-  // Ship types
-  getShipTypes(): Promise<ShipType[]>;
-  getShipType(id: string): Promise<ShipType | undefined>;
-  createShipType(data: InsertShipType): Promise<ShipType>;
-  updateShipType(id: string, data: Partial<InsertShipType>): Promise<ShipType | undefined>;
-  deleteShipType(id: string): Promise<boolean>;
+  // Fleets
+  getFleets(createdBySeatUserId?: number): Promise<Fleet[]>;
+  getFleet(id: string): Promise<Fleet | undefined>;
+  getActiveFleets(): Promise<Fleet[]>;
+  createFleet(seatUserId: number, fcName: string, data: InsertFleet): Promise<Fleet>;
+  updateFleet(id: string, data: Partial<Fleet>): Promise<Fleet | undefined>;
 
   // SRP Requests
-  getSrpRequests(userId?: string, status?: string): Promise<SrpRequestWithDetails[]>;
+  getSrpRequests(seatUserId?: number, status?: string): Promise<SrpRequestWithDetails[]>;
   getSrpRequest(id: string): Promise<SrpRequestWithDetails | undefined>;
-  createSrpRequest(userId: string, data: InsertSrpRequest): Promise<SrpRequest>;
+  getSrpRequestByKillmailId(killmailId: number): Promise<SrpRequest | undefined>;
+  createSrpRequest(seatUserId: number, data: InsertSrpRequest): Promise<SrpRequest>;
   updateSrpRequest(id: string, data: Partial<SrpRequest>): Promise<SrpRequest | undefined>;
-  reviewSrpRequest(id: string, reviewerId: string, status: string, note?: string, payout?: number): Promise<SrpRequest | undefined>;
+  reviewSrpRequest(id: string, reviewerName: string, status: string, note?: string, payout?: number): Promise<SrpRequest | undefined>;
+  markSrpRequestPaid(id: string): Promise<SrpRequest | undefined>;
 
   // Stats
-  getDashboardStats(): Promise<DashboardStats>;
+  getDashboardStats(seatUserId: number): Promise<DashboardStats>;
 }
 
 export class DatabaseStorage implements IStorage {
   // User roles
-  async getUserRole(userId: string): Promise<UserRole | undefined> {
-    const [role] = await db.select().from(userRoles).where(eq(userRoles.userId, userId));
+  async getUserRole(seatUserId: number): Promise<UserRole | undefined> {
+    const [role] = await db.select().from(userRoles).where(eq(userRoles.seatUserId, seatUserId));
     return role || undefined;
   }
 
@@ -52,140 +53,139 @@ export class DatabaseStorage implements IStorage {
     return role;
   }
 
-  async updateUserRole(userId: string, role: string): Promise<UserRole | undefined> {
+  async updateUserRole(seatUserId: number, role: string): Promise<UserRole | undefined> {
     const [updated] = await db
       .update(userRoles)
       .set({ role: role as any })
-      .where(eq(userRoles.userId, userId))
+      .where(eq(userRoles.seatUserId, seatUserId))
       .returning();
     return updated || undefined;
   }
 
-  // Ship types
-  async getShipTypes(): Promise<ShipType[]> {
-    return db.select().from(shipTypes).orderBy(shipTypes.name);
+  // Fleets
+  async getFleets(createdBySeatUserId?: number): Promise<Fleet[]> {
+    if (createdBySeatUserId) {
+      return await db.select().from(fleets)
+        .where(eq(fleets.createdBySeatUserId, createdBySeatUserId))
+        .orderBy(desc(fleets.scheduledAt));
+    }
+    return await db.select().from(fleets)
+      .orderBy(desc(fleets.scheduledAt));
   }
 
-  async getShipType(id: string): Promise<ShipType | undefined> {
-    const [ship] = await db.select().from(shipTypes).where(eq(shipTypes.id, id));
-    return ship || undefined;
+  async getFleet(id: string): Promise<Fleet | undefined> {
+    const [fleet] = await db.select().from(fleets).where(eq(fleets.id, id));
+    return fleet || undefined;
   }
 
-  async createShipType(data: InsertShipType): Promise<ShipType> {
-    const [ship] = await db.insert(shipTypes).values(data).returning();
-    return ship;
+  async getActiveFleets(): Promise<Fleet[]> {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    return await db.select().from(fleets)
+      .where(and(
+        eq(fleets.status, "active"),
+        gte(fleets.scheduledAt, sevenDaysAgo)
+      ))
+      .orderBy(desc(fleets.scheduledAt));
   }
 
-  async updateShipType(id: string, data: Partial<InsertShipType>): Promise<ShipType | undefined> {
-    const [updated] = await db
-      .update(shipTypes)
-      .set(data)
-      .where(eq(shipTypes.id, id))
+  async createFleet(seatUserId: number, fcName: string, data: InsertFleet): Promise<Fleet> {
+    const [fleet] = await db.insert(fleets).values({
+      ...data,
+      createdBySeatUserId: seatUserId,
+      fcCharacterName: fcName,
+      status: "active",
+    }).returning();
+    return fleet;
+  }
+
+  async updateFleet(id: string, data: Partial<Fleet>): Promise<Fleet | undefined> {
+    const [updated] = await db.update(fleets)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(fleets.id, id))
       .returning();
     return updated || undefined;
-  }
-
-  async deleteShipType(id: string): Promise<boolean> {
-    const result = await db.delete(shipTypes).where(eq(shipTypes.id, id)).returning();
-    return result.length > 0;
   }
 
   // SRP Requests
-  async getSrpRequests(userId?: string, status?: string): Promise<SrpRequestWithDetails[]> {
+  async getSrpRequests(seatUserId?: number, status?: string): Promise<SrpRequestWithDetails[]> {
     let conditions = [];
-    if (userId) {
-      conditions.push(eq(srpRequests.userId, userId));
+    if (seatUserId) {
+      conditions.push(eq(srpRequests.seatUserId, seatUserId));
     }
     if (status && status !== "all") {
       conditions.push(eq(srpRequests.status, status as any));
     }
 
     const requests = await db
-      .select({
-        id: srpRequests.id,
-        userId: srpRequests.userId,
-        shipTypeId: srpRequests.shipTypeId,
-        killmailUrl: srpRequests.killmailUrl,
-        iskAmount: srpRequests.iskAmount,
-        lossDescription: srpRequests.lossDescription,
-        fleetName: srpRequests.fleetName,
-        fcName: srpRequests.fcName,
-        status: srpRequests.status,
-        reviewerId: srpRequests.reviewerId,
-        reviewerNote: srpRequests.reviewerNote,
-        payoutAmount: srpRequests.payoutAmount,
-        createdAt: srpRequests.createdAt,
-        updatedAt: srpRequests.updatedAt,
-        reviewedAt: srpRequests.reviewedAt,
-        shipType: shipTypes,
-      })
+      .select()
       .from(srpRequests)
-      .leftJoin(shipTypes, eq(srpRequests.shipTypeId, shipTypes.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(srpRequests.createdAt));
 
-    // Get pilot names
-    const userIds = [...new Set(requests.map(r => r.userId))];
-    const pilotUsers = userIds.length > 0 
-      ? await db.select().from(users).where(sql`${users.id} = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}])`)
+    // Get fleet info for requests that have fleetId
+    const fleetIds = Array.from(new Set(requests.filter(r => r.fleetId).map(r => r.fleetId!)));
+    const fleetList = fleetIds.length > 0
+      ? await db.select().from(fleets).where(sql`${fleets.id} = ANY(ARRAY[${sql.join(fleetIds.map(id => sql`${id}`), sql`, `)}])`)
       : [];
-    
-    const userMap = new Map(pilotUsers.map(u => [u.id, u]));
+    const fleetMap = new Map(fleetList.map(f => [f.id, f]));
 
-    return requests.map(r => ({
-      ...r,
-      shipType: r.shipType || { id: "", name: "Unknown", category: "other", baseValue: 0 },
-      pilotName: userMap.get(r.userId)?.firstName 
-        ? `${userMap.get(r.userId)?.firstName} ${userMap.get(r.userId)?.lastName || ""}`.trim()
-        : userMap.get(r.userId)?.email || "Unknown Pilot",
-    }));
+    return requests.map(r => {
+      const shipData = shipCatalogService.getShipByTypeId(r.shipTypeId);
+      const fleet = r.fleetId ? fleetMap.get(r.fleetId) : undefined;
+      
+      return {
+        ...r,
+        shipData: shipData,
+        pilotName: r.victimCharacterName || "알 수 없는 파일럿",
+        fleet,
+      };
+    });
   }
 
   async getSrpRequest(id: string): Promise<SrpRequestWithDetails | undefined> {
     const [request] = await db
-      .select({
-        id: srpRequests.id,
-        userId: srpRequests.userId,
-        shipTypeId: srpRequests.shipTypeId,
-        killmailUrl: srpRequests.killmailUrl,
-        iskAmount: srpRequests.iskAmount,
-        lossDescription: srpRequests.lossDescription,
-        fleetName: srpRequests.fleetName,
-        fcName: srpRequests.fcName,
-        status: srpRequests.status,
-        reviewerId: srpRequests.reviewerId,
-        reviewerNote: srpRequests.reviewerNote,
-        payoutAmount: srpRequests.payoutAmount,
-        createdAt: srpRequests.createdAt,
-        updatedAt: srpRequests.updatedAt,
-        reviewedAt: srpRequests.reviewedAt,
-        shipType: shipTypes,
-      })
+      .select()
       .from(srpRequests)
-      .leftJoin(shipTypes, eq(srpRequests.shipTypeId, shipTypes.id))
       .where(eq(srpRequests.id, id));
 
     if (!request) return undefined;
 
-    // Get pilot name
-    const [pilot] = await db.select().from(users).where(eq(users.id, request.userId));
-    const pilotName = pilot?.firstName 
-      ? `${pilot.firstName} ${pilot.lastName || ""}`.trim()
-      : pilot?.email || "Unknown Pilot";
+    const shipData = shipCatalogService.getShipByTypeId(request.shipTypeId);
+    
+    // Use victimCharacterName as pilotName
+    const pilotName = request.victimCharacterName || "알 수 없는 파일럿";
+
+    // Get fleet info if linked
+    let fleet = undefined;
+    if (request.fleetId) {
+      const [f] = await db.select().from(fleets).where(eq(fleets.id, request.fleetId));
+      fleet = f || undefined;
+    }
 
     return {
       ...request,
-      shipType: request.shipType || { id: "", name: "Unknown", category: "other", baseValue: 0 },
+      shipData,
       pilotName,
+      fleet,
     };
   }
 
-  async createSrpRequest(userId: string, data: InsertSrpRequest): Promise<SrpRequest> {
+  async getSrpRequestByKillmailId(killmailId: number): Promise<SrpRequest | undefined> {
+    const [request] = await db
+      .select()
+      .from(srpRequests)
+      .where(eq(srpRequests.killmailId, killmailId));
+    return request || undefined;
+  }
+
+  async createSrpRequest(seatUserId: number, data: InsertSrpRequest): Promise<SrpRequest> {
     const [request] = await db
       .insert(srpRequests)
       .values({
         ...data,
-        userId,
+        seatUserId,
         status: "pending",
       })
       .returning();
@@ -195,7 +195,7 @@ export class DatabaseStorage implements IStorage {
   async updateSrpRequest(id: string, data: Partial<SrpRequest>): Promise<SrpRequest | undefined> {
     const [updated] = await db
       .update(srpRequests)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data })
       .where(eq(srpRequests.id, id))
       .returning();
     return updated || undefined;
@@ -203,7 +203,7 @@ export class DatabaseStorage implements IStorage {
 
   async reviewSrpRequest(
     id: string, 
-    reviewerId: string, 
+    reviewerName: string, 
     status: string, 
     note?: string, 
     payout?: number
@@ -212,26 +212,49 @@ export class DatabaseStorage implements IStorage {
       .update(srpRequests)
       .set({
         status: status as any,
-        reviewerId,
+        reviewerName,
         reviewerNote: note || null,
         payoutAmount: payout || null,
         reviewedAt: new Date(),
-        updatedAt: new Date(),
       })
       .where(eq(srpRequests.id, id))
       .returning();
     return updated || undefined;
   }
 
-  // Stats
-  async getDashboardStats(): Promise<DashboardStats> {
-    // Pending count
+  async markSrpRequestPaid(id: string): Promise<SrpRequest | undefined> {
+    const [updated] = await db
+      .update(srpRequests)
+      .set({
+        paidAt: new Date(),
+      })
+      .where(eq(srpRequests.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  // Stats (mix of personal and global stats)
+  async getDashboardStats(seatUserId: number): Promise<DashboardStats> {
+    // PERSONAL: User's pending count
     const [{ count: pendingCount }] = await db
       .select({ count: count() })
       .from(srpRequests)
-      .where(eq(srpRequests.status, "pending"));
+      .where(and(
+        eq(srpRequests.seatUserId, seatUserId),
+        eq(srpRequests.status, "pending")
+      ));
 
-    // Approved today
+    // PERSONAL: User's total received payout (only actually paid ones)
+    const [paidResult] = await db
+      .select({ total: sql<number>`COALESCE(SUM(${srpRequests.payoutAmount}), 0)` })
+      .from(srpRequests)
+      .where(and(
+        eq(srpRequests.seatUserId, seatUserId),
+        eq(srpRequests.status, "approved"),
+        sql`${srpRequests.paidAt} IS NOT NULL`
+      ));
+
+    // GLOBAL: Approved today (all users)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const [{ count: approvedToday }] = await db
@@ -242,13 +265,7 @@ export class DatabaseStorage implements IStorage {
         sql`${srpRequests.reviewedAt} >= ${today}`
       ));
 
-    // Total paid out
-    const [paidResult] = await db
-      .select({ total: sql<number>`COALESCE(SUM(${srpRequests.payoutAmount}), 0)` })
-      .from(srpRequests)
-      .where(eq(srpRequests.status, "approved"));
-
-    // Average processing time (in hours)
+    // GLOBAL: Average processing time (all users)
     const [avgResult] = await db
       .select({ 
         avg: sql<number>`COALESCE(AVG(EXTRACT(EPOCH FROM (${srpRequests.reviewedAt} - ${srpRequests.createdAt})) / 3600), 0)` 

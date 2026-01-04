@@ -6,7 +6,8 @@ import {
   ClipboardCheck, 
   Settings,
   Shield,
-  Rocket
+  Rocket,
+  Users
 } from "lucide-react";
 import {
   Sidebar,
@@ -26,14 +27,18 @@ import { useQuery } from "@tanstack/react-query";
 import type { DashboardStats } from "@shared/schema";
 
 const memberItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "New Request", url: "/new-request", icon: PlusCircle },
-  { title: "My Requests", url: "/my-requests", icon: FileText },
+  { title: "대시보드", url: "/", icon: LayoutDashboard },
+  { title: "새 요청", url: "/new-request", icon: PlusCircle },
+  { title: "나의 요청", url: "/my-requests", icon: FileText },
+];
+
+const fcItems = [
+  { title: "플릿 관리", url: "/fleet-management", icon: Users },
+  { title: "요청 관리", url: "/all-requests", icon: ClipboardCheck },
 ];
 
 const adminItems = [
-  { title: "All Requests", url: "/all-requests", icon: ClipboardCheck },
-  { title: "Ship Types", url: "/ship-types", icon: Settings },
+  { title: "함선 유형 관리", url: "/ship-types", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -88,18 +93,18 @@ export function AppSidebar() {
         {isAdmin && (
           <SidebarGroup>
             <SidebarGroupLabel className="flex items-center gap-2">
-              <Shield className="h-3 w-3" />
-              Administration
+              <Users className="h-3 w-3" />
+              FC 도구
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {adminItems.map((item) => (
+                {fcItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={location === item.url}>
                       <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
-                        {item.title === "All Requests" && pendingCount > 0 && (
+                        {item.title === "요청 관리" && pendingCount > 0 && (
                           <Badge variant="destructive" className="ml-auto" data-testid="badge-pending-count">
                             {pendingCount}
                           </Badge>
@@ -112,18 +117,46 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
+
+        {userRole?.role === "admin" && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center gap-2">
+              <Shield className="h-3 w-3" />
+              관리자 도구
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location === item.url}>
+                      <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter className="p-4">
-        {userRole && (
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2">
+          {user && (
+            <span className="text-sm font-medium" data-testid="text-main-character-name">
+              {user.characterName}
+            </span>
+          )}
+          {userRole && (
             <Badge 
-              variant={userRole.role === "admin" ? "default" : "secondary"}
+              variant={userRole.role === "admin" ? "destructive" : userRole.role === "fc" ? "default" : "secondary"}
               data-testid="badge-user-role"
             >
               {userRole.role.toUpperCase()}
             </Badge>
-          </div>
-        )}
+          )}
+        </div>
       </SidebarFooter>
     </Sidebar>
   );

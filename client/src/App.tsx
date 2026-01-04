@@ -19,6 +19,7 @@ import MyRequests from "@/pages/my-requests";
 import AllRequests from "@/pages/all-requests";
 import ShipTypes from "@/pages/ship-types";
 import RequestDetail from "@/pages/request-detail";
+import FleetManagement from "@/pages/fleet-management";
 
 function AuthenticatedRouter() {
   return (
@@ -28,6 +29,7 @@ function AuthenticatedRouter() {
       <Route path="/my-requests" component={MyRequests} />
       <Route path="/all-requests" component={AllRequests} />
       <Route path="/ship-types" component={ShipTypes} />
+      <Route path="/fleet-management" component={FleetManagement} />
       <Route path="/request/:id" component={RequestDetail} />
       <Route component={NotFound} />
     </Switch>

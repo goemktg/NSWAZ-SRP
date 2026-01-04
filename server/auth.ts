@@ -2,14 +2,12 @@ import session from "express-session";
 import type { Express, RequestHandler, Request, Response } from "express";
 import connectPg from "connect-pg-simple";
 import crypto from "crypto";
-import { db } from "./db";
-import { users } from "@shared/models/auth";
-import { eq } from "drizzle-orm";
+import { seatApiService } from "./services/seatApi";
+import { storage } from "./storage";
+import type { SessionUserData } from "@shared/models/auth";
 
 const EVE_SSO_AUTH_URL = "https://login.eveonline.com/v2/oauth/authorize";
 const EVE_SSO_TOKEN_URL = "https://login.eveonline.com/v2/oauth/token";
-const EVE_SSO_REVOKE_URL = "https://login.eveonline.com/v2/oauth/revoke";
-const EVE_VERIFY_URL = "https://esi.evetech.net/verify/";
 
 interface EveTokenResponse {
   access_token: string;
@@ -30,9 +28,7 @@ interface EveCharacterInfo {
 
 declare module "express-session" {
   interface SessionData {
-    userId?: string;
-    characterId?: number;
-    characterName?: string;
+    user?: SessionUserData;
     accessToken?: string;
     refreshToken?: string;
     tokenExpiry?: number;
@@ -117,7 +113,7 @@ async function refreshAccessToken(refreshToken: string): Promise<EveTokenRespons
 }
 
 async function getCharacterInfo(accessToken: string): Promise<EveCharacterInfo> {
-  const response = await fetch(EVE_VERIFY_URL, {
+  const response = await fetch("https://esi.evetech.net/verify/", {
     headers: {
       "Authorization": `Bearer ${accessToken}`,
     },
@@ -130,36 +126,49 @@ async function getCharacterInfo(accessToken: string): Promise<EveCharacterInfo> 
   return response.json();
 }
 
-async function upsertUser(characterInfo: EveCharacterInfo, tokens: EveTokenResponse): Promise<string> {
-  const tokenExpiry = new Date(Date.now() + tokens.expires_in * 1000);
-  const profileImageUrl = `https://images.evetech.net/characters/${characterInfo.CharacterID}/portrait?size=128`;
-  
-  const existingUser = await db.select().from(users).where(eq(users.characterId, characterInfo.CharacterID)).limit(1);
-  
-  if (existingUser.length > 0) {
-    await db.update(users)
-      .set({
-        characterName: characterInfo.CharacterName,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        tokenExpiry: tokenExpiry,
-        profileImageUrl: profileImageUrl,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.characterId, characterInfo.CharacterID));
-    return existingUser[0].id;
-  } else {
-    const [newUser] = await db.insert(users)
-      .values({
-        characterId: characterInfo.CharacterID,
-        characterName: characterInfo.CharacterName,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        tokenExpiry: tokenExpiry,
-        profileImageUrl: profileImageUrl,
-      })
-      .returning();
-    return newUser.id;
+async function fetchUserDataFromSeat(characterId: number): Promise<SessionUserData | null> {
+  try {
+    // 1) character sheet → user_id
+    const sheet = await seatApiService.getCharacterSheet(characterId);
+    const seatUserId = sheet?.user_id;
+    if (!seatUserId) {
+      console.error(`Could not find SeAT user for character ${characterId}`);
+      return null;
+    }
+
+    // 2) user info → associated_character_ids, main_character_id
+    const userInfo = await seatApiService.getUserById(seatUserId);
+    if (!userInfo) {
+      console.error(`SeAT user ${seatUserId} not found for character ${characterId}`);
+      return null;
+    }
+    const associatedCharacterIds = userInfo.associated_character_ids || [];
+    const mainCharacterId = userInfo.main_character_id || characterId;
+
+    // 3) main character sheet → name/corp/alliance
+    const mainSheet = await seatApiService.getCharacterSheet(mainCharacterId);
+    const mainCharacterName = mainSheet?.name || `Character_${mainCharacterId}`;
+    const mainCharacterCorporationId = mainSheet?.corporation_id;
+    const mainCharacterCorporationName = mainSheet?.corporation?.name;
+    const mainCharacterAllianceId = mainSheet?.alliance_id;
+    const mainCharacterAllianceName = mainSheet?.alliance?.name;
+
+    const profileImageUrl = `https://images.evetech.net/characters/${mainCharacterId}/portrait?size=128`;
+
+    return {
+      seatUserId,
+      mainCharacterId,
+      mainCharacterName,
+      profileImageUrl,
+      mainCharacterCorporationId,
+      mainCharacterCorporationName,
+      mainCharacterAllianceId,
+      mainCharacterAllianceName,
+      associatedCharacterIds,
+    };
+  } catch (error) {
+    console.error("Error fetching user data from SeAT:", error);
+    return null;
   }
 }
 
@@ -178,13 +187,12 @@ export async function setupAuth(app: Express) {
     const state = crypto.randomBytes(16).toString("hex");
     req.session.oauthState = state;
 
-    const redirectUri = `${req.protocol}://${req.get("host")}/api/callback`;
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/callback`;
     
     const params = new URLSearchParams({
       response_type: "code",
       client_id: clientId,
       redirect_uri: redirectUri,
-      scope: "publicData",
       state: state,
     });
 
@@ -192,7 +200,7 @@ export async function setupAuth(app: Express) {
   });
 
   // Callback route - handle EVE SSO response
-  app.get("/api/callback", async (req: Request, res: Response) => {
+  app.get("/api/auth/callback", async (req: Request, res: Response) => {
     try {
       const { code, state } = req.query;
 
@@ -206,17 +214,38 @@ export async function setupAuth(app: Express) {
 
       delete req.session.oauthState;
 
-      const redirectUri = `${req.protocol}://${req.get("host")}/api/callback`;
+      const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/callback`;
       const tokens = await exchangeCodeForToken(code, redirectUri);
       const characterInfo = await getCharacterInfo(tokens.access_token);
-      const userId = await upsertUser(characterInfo, tokens);
 
-      req.session.userId = userId;
-      req.session.characterId = characterInfo.CharacterID;
-      req.session.characterName = characterInfo.CharacterName;
+      // Fetch user data from SeAT and store in session
+      const userData = await fetchUserDataFromSeat(characterInfo.CharacterID);
+      
+      if (!userData) {
+        return res.redirect("/?error=seat_user_not_found");
+      }
+
+      // Check corp/alliance restrictions
+      const allowedCorpIds = process.env.ALLOWED_CORP_IDS?.split(",").map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) || [];
+      const allowedAllianceIds = process.env.ALLOWED_ALLIANCE_IDS?.split(",").map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) || [];
+      
+      const hasRestrictions = allowedCorpIds.length > 0 || allowedAllianceIds.length > 0;
+      if (hasRestrictions) {
+        const isAllowedCorp = allowedCorpIds.length > 0 && userData.mainCharacterCorporationId && allowedCorpIds.includes(userData.mainCharacterCorporationId);
+        const isAllowedAlliance = allowedAllianceIds.length > 0 && userData.mainCharacterAllianceId && allowedAllianceIds.includes(userData.mainCharacterAllianceId);
+        
+        if (!isAllowedCorp && !isAllowedAlliance) {
+          console.log(`Access denied for ${userData.mainCharacterName}: corp=${userData.mainCharacterCorporationId}, alliance=${userData.mainCharacterAllianceId}`);
+          return res.redirect("/?error=access_denied");
+        }
+      }
+
+      req.session.user = userData;
       req.session.accessToken = tokens.access_token;
       req.session.refreshToken = tokens.refresh_token;
       req.session.tokenExpiry = Date.now() + tokens.expires_in * 1000;
+
+      console.log(`User logged in: seatUserId=${userData.seatUserId}, characterName=${userData.mainCharacterName}`);
 
       res.redirect("/");
     } catch (error) {
@@ -236,58 +265,49 @@ export async function setupAuth(app: Express) {
   });
 
   // Test login route - ONLY available in development mode
-  app.post("/api/test-login", async (req: Request, res: Response) => {
+  app.get("/api/test-login", async (req: Request, res: Response) => {
     const isDevelopment = process.env.NODE_ENV !== "production";
     
     if (!isDevelopment) {
-      return res.status(403).json({ message: "Test login is only available in development mode" });
+      return res.redirect("/?error=test_login_disabled");
     }
 
     try {
-      const { role } = req.body;
-      const testRole = role || "member";
+      const characterIdParam = req.query.characterId as string;
+      if (!characterIdParam) {
+        return res.redirect("/?error=character_id_required");
+      }
       
-      // Create or find test user
-      const testCharacterId = 12345678;
-      const testCharacterName = `TestUser_${testRole}`;
+      const testCharacterId = parseInt(characterIdParam, 10);
+      if (isNaN(testCharacterId)) {
+        return res.redirect("/?error=invalid_character_id");
+      }
       
-      let [existingUser] = await db.select()
-        .from(users)
-        .where(eq(users.characterId, testCharacterId))
-        .limit(1);
-
-      let userId: string;
-
-      if (existingUser) {
-        userId = existingUser.id;
-      } else {
-        const [newUser] = await db.insert(users).values({
-          characterId: testCharacterId,
-          characterName: testCharacterName,
-          corporationId: 98000001,
-          allianceId: 99000001,
-          profileImageUrl: `https://images.evetech.net/characters/${testCharacterId}/portrait?size=64`,
-        }).returning();
-        userId = newUser.id;
+      // Fetch user data from SeAT
+      const userData = await fetchUserDataFromSeat(testCharacterId);
+      
+      if (!userData) {
+        return res.redirect("/?error=seat_user_not_found");
       }
 
-      // Set session
-      req.session.userId = userId;
-      req.session.characterId = testCharacterId;
-      req.session.characterName = testCharacterName;
-      req.session.tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+      // Create member role if no role exists (role can be changed via DB)
+      const existingRole = await storage.getUserRole(userData.seatUserId);
+      if (!existingRole) {
+        await storage.createUserRole({ seatUserId: userData.seatUserId, role: "member" });
+        console.log(`Created member role for seatUserId ${userData.seatUserId}`);
+      }
 
-      res.json({ 
-        success: true, 
-        message: "Test login successful",
-        user: {
-          id: userId,
-          characterName: testCharacterName,
-        }
-      });
+      req.session.user = userData;
+      req.session.accessToken = `test_access_token_${Date.now()}`;
+      req.session.refreshToken = `test_refresh_token_${Date.now()}`;
+      req.session.tokenExpiry = Date.now() + 1200 * 1000;
+
+      console.log(`Test login: seatUserId=${userData.seatUserId}, characterName=${userData.mainCharacterName}`);
+
+      res.redirect("/");
     } catch (error) {
       console.error("Test login error:", error);
-      res.status(500).json({ message: "Test login failed" });
+      res.redirect("/?error=test_login_failed");
     }
   });
 
@@ -298,7 +318,7 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req: Request, res: Response, next) => {
-  if (!req.session.userId) {
+  if (!req.session.user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
@@ -314,21 +334,18 @@ export const isAuthenticated: RequestHandler = async (req: Request, res: Respons
     return res.status(401).json({ message: "Unauthorized" });
   }
 
+  // For test tokens, just extend expiry
+  if (refreshToken.startsWith("test_")) {
+    req.session.tokenExpiry = Date.now() + 1200 * 1000;
+    return next();
+  }
+
   try {
     const tokens = await refreshAccessToken(refreshToken);
     
     req.session.accessToken = tokens.access_token;
     req.session.refreshToken = tokens.refresh_token;
     req.session.tokenExpiry = Date.now() + tokens.expires_in * 1000;
-
-    await db.update(users)
-      .set({
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        tokenExpiry: new Date(req.session.tokenExpiry),
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, req.session.userId));
 
     return next();
   } catch (error) {
@@ -340,17 +357,16 @@ export const isAuthenticated: RequestHandler = async (req: Request, res: Respons
 export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/user", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const userId = req.session.userId;
-      const [user] = await db.select().from(users).where(eq(users.id, userId!)).limit(1);
+      const user = req.session.user;
       
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
 
       res.json({
-        id: user.id,
-        characterId: user.characterId,
-        characterName: user.characterName,
+        seatUserId: user.seatUserId,
+        characterId: user.mainCharacterId,
+        characterName: user.mainCharacterName,
         profileImageUrl: user.profileImageUrl,
       });
     } catch (error) {

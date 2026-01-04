@@ -8,7 +8,8 @@ The system features a dashboard with statistics, request submission forms, reque
 
 ## User Preferences
 
-Preferred communication style: Simple, everyday language.
+- Preferred communication style: Simple, everyday language.
+- UI Language: Korean (한국어) - All user-facing text, labels, buttons, and messages are in Korean
 
 ## System Architecture
 
@@ -37,14 +38,17 @@ Preferred communication style: Simple, everyday language.
 - **Provider**: EVE Online SSO (OAuth 2.0 Authorization Code flow)
 - **Session Storage**: PostgreSQL-backed sessions via connect-pg-simple
 - **Session Management**: Express-session with secure cookies and CSRF protection
+- **User Data Storage**: Session-only (no user tables in DB) - SeAT API is the source of truth
+- **User Identification**: seatUserId (integer) from SeAT API, stored in session
 - **Token Refresh**: Automatic access token refresh using refresh tokens
+- **Character Ownership**: Associated character IDs fetched from SeAT `/api/v2/users/{user_id}` endpoint and stored in session for killmail ownership validation
+- **Login Requirement**: User must be registered in SeAT - unregistered characters are rejected with guidance to add to SeAT
 
 ### Key Database Tables
-- `users` - User accounts with EVE character data (characterId, characterName, corporationId, allianceId)
-- `sessions` - Session storage for authentication
-- `user_roles` - Role assignments (member, fc, admin)
-- `ship_types` - Ship definitions with categories and base ISK values
-- `srp_requests` - SRP request submissions with status tracking
+- `sessions` - Session storage for authentication (user data stored in session, not separate table)
+- `user_roles` - Role assignments by seatUserId (member, fc, admin)
+- `fleets` - Fleet operations created by FC/admin users (references createdBySeatUserId)
+- `srp_requests` - SRP request submissions with status tracking (references seatUserId for ownership)
 
 ### Role-Based Access Control
 - **member**: Can submit requests and view their own requests
@@ -60,12 +64,14 @@ Preferred communication style: Simple, everyday language.
 ### Third-Party APIs
 - **EVE Online SSO**: Character authentication (https://login.eveonline.com)
 - **zKillboard/EVE ESI**: Killmail URL validation for SRP requests
+- **SeAT API**: Character synchronization (https://seat.nisuwaz.com/api/v2)
 
 ### Required Environment Variables
 - `EVE_CLIENT_ID`: EVE Developer Portal application Client ID
 - `EVE_CLIENT_SECRET`: EVE Developer Portal application Secret Key
 - `SESSION_SECRET`: Session encryption secret
 - `DATABASE_URL`: PostgreSQL connection string
+- `SEAT_API_TOKEN`: SeAT API token for multi-character sync (optional but required for character ownership validation)
 
 ### Key npm Packages
 - `drizzle-orm` / `drizzle-kit`: Database ORM and migration tools

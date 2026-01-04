@@ -16,10 +16,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats, SrpRequestWithDetails } from "@shared/schema";
 
 function formatIsk(amount: number): string {
-  if (amount >= 1000) {
-    return `${(amount / 1000).toFixed(1)}B ISK`;
+  if (amount >= 1000000000) {
+    return `${(amount / 1000000000).toFixed(2)}B`;
+  } else if (amount >= 1000000) {
+    return `${(amount / 1000000).toFixed(1)}M`;
   }
-  return `${amount}M ISK`;
+  return `${amount.toLocaleString()}`;
 }
 
 function getStatusVariant(status: string) {
@@ -47,19 +49,31 @@ function StatCard({
   title, 
   value, 
   icon: Icon, 
-  loading 
+  loading,
+  isSiteWide = false
 }: { 
   title: string; 
   value: string | number; 
   icon: React.ElementType; 
   loading?: boolean;
+  isSiteWide?: boolean;
 }) {
   return (
-    <Card data-testid={`card-stat-${title.toLowerCase().replace(/\s/g, "-")}`}>
+    <Card 
+      data-testid={`card-stat-${title.toLowerCase().replace(/\s/g, "-")}`}
+      className={isSiteWide ? "bg-muted/50 dark:bg-muted/20 border-dashed" : ""}
+    >
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            {title}
+          </CardTitle>
+          {isSiteWide && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+              전체
+            </span>
+          )}
+        </div>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
@@ -85,55 +99,57 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+        <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">대시보드</h1>
         <p className="text-muted-foreground">
-          Overview of your SRP activity and alliance statistics
+          당신의 SRP 활동 개요입니다.
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Pending Requests"
+          title="승인 대기중인 요청"
           value={stats?.pendingCount ?? 0}
           icon={Clock}
           loading={statsLoading}
         />
         <StatCard
-          title="Approved Today"
-          value={stats?.approvedToday ?? 0}
-          icon={CheckCircle}
-          loading={statsLoading}
-        />
-        <StatCard
-          title="Total Paid Out"
+          title="총 지급받은 ISK"
           value={stats ? formatIsk(stats.totalPaidOut) : "0M ISK"}
           icon={DollarSign}
           loading={statsLoading}
         />
         <StatCard
-          title="Avg. Processing"
+          title="오늘 승인된 요청 수"
+          value={stats?.approvedToday ?? 0}
+          icon={CheckCircle}
+          loading={statsLoading}
+          isSiteWide
+        />
+        <StatCard
+          title="평균 처리 시간"
           value={stats ? `${stats.averageProcessingHours}h` : "0h"}
           icon={Timer}
           loading={statsLoading}
+          isSiteWide
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card data-testid="card-quick-actions">
           <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+            <CardTitle>빠른 행동</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Button asChild className="justify-start" data-testid="button-new-request">
               <Link href="/new-request">
                 <PlusCircle className="mr-2 h-4 w-4" />
-                Submit New SRP Request
+                SRP 요청 제출하기
               </Link>
             </Button>
             <Button asChild variant="outline" className="justify-start" data-testid="button-view-requests">
               <Link href="/my-requests">
                 <FileText className="mr-2 h-4 w-4" />
-                View My Requests
+                나의 요청 보기
               </Link>
             </Button>
           </CardContent>
@@ -141,10 +157,10 @@ export default function Dashboard() {
 
         <Card data-testid="card-recent-activity">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle>Recent Activity</CardTitle>
+            <CardTitle>최근 요청한 킬메일</CardTitle>
             <Button variant="ghost" size="sm" asChild data-testid="button-view-all">
               <Link href="/my-requests">
-                View All
+                모두 보기
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Link>
             </Button>
@@ -170,16 +186,27 @@ export default function Dashboard() {
                     className="flex items-center justify-between"
                     data-testid={`row-request-${request.id}`}
                   >
-                    <div>
-                      <p className="font-medium">{request.shipType?.name || "Unknown Ship"}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {request.createdAt && formatTimeAgo(request.createdAt)}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <img 
+                        src={`https://images.evetech.net/types/${request.shipTypeId}/icon?size=32`}
+                        alt=""
+                        className="h-6 w-6"
+                      />
+                      <div>
+                        <p className="font-medium">
+                          {request.shipData?.typeName || "알 수 없는 함선"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {request.createdAt && formatTimeAgo(request.createdAt)}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm">{request.iskAmount}M</span>
+                      <span className="font-mono text-sm">{formatIsk(request.iskAmount)}</span>
                       <Badge variant={getStatusVariant(request.status)}>
-                        {request.status}
+                        {request.status === "approved" ? "승인됨" : 
+                         request.status === "denied" ? "거부됨" : 
+                         request.status === "processing" ? "처리 중" : "대기 중"}
                       </Badge>
                     </div>
                   </div>
@@ -188,8 +215,8 @@ export default function Dashboard() {
             ) : (
               <div className="py-8 text-center text-muted-foreground" data-testid="text-no-activity">
                 <FileText className="mx-auto h-8 w-8 mb-2 opacity-50" />
-                <p>No recent activity</p>
-                <p className="text-sm">Submit your first SRP request to get started</p>
+                <p>최근 요청한 킬메일 없음</p>
+                <p className="text-sm">첫 SRP 요청을 제출하여 시작하세요</p>
               </div>
             )}
           </CardContent>

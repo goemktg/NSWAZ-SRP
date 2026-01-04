@@ -16,7 +16,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ vars.DOCKER_USERNAME }}/eve-srp
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/eve-srp
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -39,5 +39,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ vars.DOCKER_USERNAME }}/eve-srp:buildcache
-          cache-to: type=registry,ref=${{ vars.DOCKER_USERNAME }}/eve-srp:buildcache,mode=max
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/eve-srp:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_TOKEN }}/eve-srp:buildcache,mode=max

@@ -23,4 +23,4 @@ RUN npm ci --omit=dev
 
 EXPOSE 5000
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/index.cjs"]

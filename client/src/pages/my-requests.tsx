@@ -144,13 +144,19 @@ export default function MyRequests() {
                       <TableCell className="text-right font-mono">
                         {formatIsk(request.iskAmount)}
                       </TableCell>
-                      <TableCell className="text-right font-mono">
+                      <TableCell className="text-right">
                         {request.payoutAmount ? (
-                          <span className={request.status === "paid" ? "text-green-600 dark:text-green-400" : ""}>
-                            {formatIsk(request.payoutAmount)}
-                            {request.status === "approved" && <span className="text-muted-foreground text-xs ml-1">(예정)</span>}
-                          </span>
-                        ) : "-"}
+                          <div className="flex items-center justify-end gap-2">
+                            <span className={`font-mono ${request.status === "paid" ? "text-green-600 dark:text-green-400" : ""}`}>
+                              {formatIsk(request.payoutAmount)}
+                            </span>
+                            {request.status === "approved" && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                                예정
+                              </Badge>
+                            )}
+                          </div>
+                        ) : <span className="text-muted-foreground">-</span>}
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusVariant(request.status)}>

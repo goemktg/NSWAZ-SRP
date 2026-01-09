@@ -191,8 +191,8 @@ export type SrpCalculateResponse = {
 };
 
 // SRP status type derived from process log
-// Note: "paid" is an event, not a status - approved requests remain "approved" after payment
-export type SrpStatus = "pending" | "approved" | "denied" | "processing";
+// Flow: pending → approved/denied → paid (after approval)
+export type SrpStatus = "pending" | "approved" | "denied" | "paid";
 
 // Extended types for frontend display
 export type SrpRequestWithDetails = SrpRequest & {

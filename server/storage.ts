@@ -18,15 +18,15 @@ import { db } from "./db";
 import { eq, desc, and, sql, count, gte } from "drizzle-orm";
 import { shipCatalogService } from "./services/shipCatalog";
 
-// Status-changing process types (not including events like 'paid' or 'updated')
-const STATUS_PROCESS_TYPES = ["created", "approved", "denied", "processing"];
+// Status-changing process types (not including 'updated' event)
+const STATUS_PROCESS_TYPES = ["created", "approved", "denied", "paid"];
 
 // Helper to derive status from process logs
-// "paid" is an event, not a status - the status remains "approved" after payment
+// Flow: pending → approved/denied → paid
 function deriveStatusFromLogs(logs: SrpProcessLog[]): SrpStatus {
   if (logs.length === 0) return "pending";
   
-  // Find the latest status-changing log (ignore 'paid' and 'updated' events)
+  // Find the latest status-changing log (ignore 'updated' events)
   for (const log of logs) {
     if (STATUS_PROCESS_TYPES.includes(log.processType)) {
       if (log.processType === "created") return "pending";
@@ -34,11 +34,6 @@ function deriveStatusFromLogs(logs: SrpProcessLog[]): SrpStatus {
     }
   }
   return "pending";
-}
-
-// Helper to check if a request has been paid
-function hasPaidLog(logs: SrpProcessLog[]): boolean {
-  return logs.some(log => log.processType === "paid");
 }
 
 export interface IStorage {
@@ -359,8 +354,8 @@ export class DatabaseStorage implements IStorage {
         if (status === "pending") {
           pendingCount++;
         }
-        // Sum payouts for approved requests that have been paid
-        if (status === "approved" && hasPaidLog(logs) && request.payoutAmount) {
+        // Sum payouts for paid requests
+        if (status === "paid" && request.payoutAmount) {
           totalPaidOut += request.payoutAmount;
         }
       }

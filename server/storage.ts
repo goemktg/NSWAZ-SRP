@@ -11,11 +11,35 @@ import {
   type InsertSrpRequest,
   type SrpProcessLog,
   type SrpRequestWithDetails,
+  type SrpStatus,
   type DashboardStats
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, count, gte } from "drizzle-orm";
 import { shipCatalogService } from "./services/shipCatalog";
+
+// Status-changing process types (not including events like 'paid' or 'updated')
+const STATUS_PROCESS_TYPES = ["created", "approved", "denied", "processing"];
+
+// Helper to derive status from process logs
+// "paid" is an event, not a status - the status remains "approved" after payment
+function deriveStatusFromLogs(logs: SrpProcessLog[]): SrpStatus {
+  if (logs.length === 0) return "pending";
+  
+  // Find the latest status-changing log (ignore 'paid' and 'updated' events)
+  for (const log of logs) {
+    if (STATUS_PROCESS_TYPES.includes(log.processType)) {
+      if (log.processType === "created") return "pending";
+      return log.processType as SrpStatus;
+    }
+  }
+  return "pending";
+}
+
+// Helper to check if a request has been paid
+function hasPaidLog(logs: SrpProcessLog[]): boolean {
+  return logs.some(log => log.processType === "paid");
+}
 
 export interface IStorage {
   // User roles (mapped by seatUserId)
@@ -36,8 +60,7 @@ export interface IStorage {
   getSrpRequestByKillmailId(killmailId: number): Promise<SrpRequest | undefined>;
   createSrpRequest(seatUserId: number, mainCharName: string, data: InsertSrpRequest): Promise<SrpRequest>;
   updateSrpRequest(id: string, data: Partial<SrpRequest>): Promise<SrpRequest | undefined>;
-  reviewSrpRequest(id: string, reviewerName: string, status: string, note?: string, payout?: number): Promise<SrpRequest | undefined>;
-  markSrpRequestPaid(id: string, byMainChar: string): Promise<SrpRequest | undefined>;
+  addProcessLog(srpRequestId: string, processType: string, byMainChar: string, note?: string, payout?: number): Promise<void>;
 
   // SRP Process Log
   getSrpProcessLogs(srpRequestId: string): Promise<SrpProcessLog[]>;
@@ -114,13 +137,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // SRP Requests
-  async getSrpRequests(seatUserId?: number, status?: string): Promise<SrpRequestWithDetails[]> {
+  async getSrpRequests(seatUserId?: number, statusFilter?: string): Promise<SrpRequestWithDetails[]> {
     let conditions = [];
     if (seatUserId) {
       conditions.push(eq(srpRequests.seatUserId, seatUserId));
-    }
-    if (status && status !== "all") {
-      conditions.push(eq(srpRequests.status, status as any));
     }
 
     const requests = await db
@@ -130,7 +150,7 @@ export class DatabaseStorage implements IStorage {
 
     if (requests.length === 0) return [];
 
-    // Get all process logs for sorting
+    // Get all process logs
     const requestIds = requests.map(r => r.id);
     const allLogs = await db
       .select()
@@ -147,19 +167,26 @@ export class DatabaseStorage implements IStorage {
       logsMap.get(log.srpRequestId)!.push(log);
     }
 
-    // Get created_at from first log for sorting
-    const requestsWithCreatedAt = requests.map(r => {
+    // Build requests with derived status
+    const requestsWithStatus = requests.map(r => {
       const logs = logsMap.get(r.id) || [];
+      const status = deriveStatusFromLogs(logs);
       const createdLog = logs.find(l => l.processType === "created");
       return {
         ...r,
+        status,
         processLogs: logs,
         createdAt: createdLog?.occurredAt || null,
       };
     });
 
+    // Filter by status if requested
+    const filteredRequests = statusFilter && statusFilter !== "all"
+      ? requestsWithStatus.filter(r => r.status === statusFilter)
+      : requestsWithStatus;
+
     // Sort by created_at descending
-    requestsWithCreatedAt.sort((a, b) => {
+    filteredRequests.sort((a, b) => {
       if (!a.createdAt && !b.createdAt) return 0;
       if (!a.createdAt) return 1;
       if (!b.createdAt) return -1;
@@ -167,13 +194,13 @@ export class DatabaseStorage implements IStorage {
     });
 
     // Get fleet info for requests that have fleetId
-    const fleetIds = Array.from(new Set(requests.filter(r => r.fleetId).map(r => r.fleetId!)));
+    const fleetIds = Array.from(new Set(filteredRequests.filter(r => r.fleetId).map(r => r.fleetId!)));
     const fleetList = fleetIds.length > 0
       ? await db.select().from(fleets).where(sql`${fleets.id} = ANY(ARRAY[${sql.join(fleetIds.map(id => sql`${id}`), sql`, `)}])`)
       : [];
     const fleetMap = new Map(fleetList.map(f => [f.id, f]));
 
-    return requestsWithCreatedAt.map(r => {
+    return filteredRequests.map(r => {
       const shipData = shipCatalogService.getShipByTypeId(r.shipTypeId);
       const fleet = r.fleetId ? fleetMap.get(r.fleetId) : undefined;
       
@@ -206,6 +233,9 @@ export class DatabaseStorage implements IStorage {
       .where(eq(srpProcessLog.srpRequestId, id))
       .orderBy(desc(srpProcessLog.occurredAt));
 
+    // Derive status from logs
+    const status = deriveStatusFromLogs(processLogs);
+
     // Get fleet info if linked
     let fleet = undefined;
     if (request.fleetId) {
@@ -215,6 +245,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       ...request,
+      status,
       shipData,
       pilotName,
       fleet,
@@ -231,25 +262,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSrpRequest(seatUserId: number, mainCharName: string, data: InsertSrpRequest): Promise<SrpRequest> {
-    return await db.transaction(async (tx) => {
-      const [request] = await tx
-        .insert(srpRequests)
-        .values({
-          ...data,
-          seatUserId,
-          status: "pending",
-        })
-        .returning();
+    // Insert request
+    const [request] = await db
+      .insert(srpRequests)
+      .values({
+        ...data,
+        seatUserId,
+      })
+      .returning();
 
-      await tx.insert(srpProcessLog).values({
-        srpRequestId: request.id,
-        processType: "created",
-        byMainChar: mainCharName,
-        note: null,
-      });
-
-      return request;
+    // Insert 'created' process log
+    await db.insert(srpProcessLog).values({
+      srpRequestId: request.id,
+      processType: "created",
+      byMainChar: mainCharName,
+      note: null,
     });
+
+    return request;
   }
 
   async updateSrpRequest(id: string, data: Partial<SrpRequest>): Promise<SrpRequest | undefined> {
@@ -261,56 +291,27 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
-  async reviewSrpRequest(
-    id: string, 
-    reviewerName: string, 
-    status: string, 
-    note?: string, 
+  async addProcessLog(
+    srpRequestId: string,
+    processType: string,
+    byMainChar: string,
+    note?: string,
     payout?: number
-  ): Promise<SrpRequest | undefined> {
-    return await db.transaction(async (tx) => {
-      const [updated] = await tx
+  ): Promise<void> {
+    // Update payout amount if provided
+    if (payout !== undefined) {
+      await db
         .update(srpRequests)
-        .set({
-          status: status as any,
-          payoutAmount: payout || null,
-        })
-        .where(eq(srpRequests.id, id))
-        .returning();
+        .set({ payoutAmount: payout })
+        .where(eq(srpRequests.id, srpRequestId));
+    }
 
-      if (!updated) return undefined;
-
-      await tx.insert(srpProcessLog).values({
-        srpRequestId: id,
-        processType: status as any,
-        byMainChar: reviewerName,
-        note: note || null,
-      });
-
-      return updated;
-    });
-  }
-
-  async markSrpRequestPaid(id: string, byMainChar: string): Promise<SrpRequest | undefined> {
-    return await db.transaction(async (tx) => {
-      const [updated] = await tx
-        .update(srpRequests)
-        .set({
-          status: "approved",
-        })
-        .where(eq(srpRequests.id, id))
-        .returning();
-
-      if (!updated) return undefined;
-
-      await tx.insert(srpProcessLog).values({
-        srpRequestId: id,
-        processType: "paid",
-        byMainChar,
-        note: null,
-      });
-
-      return updated;
+    // Insert process log
+    await db.insert(srpProcessLog).values({
+      srpRequestId,
+      processType: processType as any,
+      byMainChar,
+      note: note || null,
     });
   }
 
@@ -325,29 +326,45 @@ export class DatabaseStorage implements IStorage {
 
   // Stats (mix of personal and global stats)
   async getDashboardStats(seatUserId: number): Promise<DashboardStats> {
-    // PERSONAL: User's pending count
-    const [{ count: pendingCount }] = await db
-      .select({ count: count() })
+    // Get user's requests with their process logs to calculate pending count
+    const userRequests = await db
+      .select()
       .from(srpRequests)
-      .where(and(
-        eq(srpRequests.seatUserId, seatUserId),
-        eq(srpRequests.status, "pending")
-      ));
+      .where(eq(srpRequests.seatUserId, seatUserId));
 
-    // PERSONAL: User's total received payout (only actually paid ones - has 'paid' log)
-    const paidRequestIds = db
-      .select({ id: srpProcessLog.srpRequestId })
-      .from(srpProcessLog)
-      .where(eq(srpProcessLog.processType, "paid"));
-    
-    const [paidResult] = await db
-      .select({ total: sql<number>`COALESCE(SUM(${srpRequests.payoutAmount}), 0)` })
-      .from(srpRequests)
-      .where(and(
-        eq(srpRequests.seatUserId, seatUserId),
-        eq(srpRequests.status, "approved"),
-        sql`${srpRequests.id} IN (${paidRequestIds})`
-      ));
+    let pendingCount = 0;
+    let totalPaidOut = 0;
+
+    if (userRequests.length > 0) {
+      const requestIds = userRequests.map(r => r.id);
+      const allLogs = await db
+        .select()
+        .from(srpProcessLog)
+        .where(sql`${srpProcessLog.srpRequestId} = ANY(ARRAY[${sql.join(requestIds.map(id => sql`${id}`), sql`, `)}])`)
+        .orderBy(desc(srpProcessLog.occurredAt));
+
+      // Group logs by request ID
+      const logsMap = new Map<string, SrpProcessLog[]>();
+      for (const log of allLogs) {
+        if (!logsMap.has(log.srpRequestId)) {
+          logsMap.set(log.srpRequestId, []);
+        }
+        logsMap.get(log.srpRequestId)!.push(log);
+      }
+
+      // Count pending and sum paid payouts
+      for (const request of userRequests) {
+        const logs = logsMap.get(request.id) || [];
+        const status = deriveStatusFromLogs(logs);
+        if (status === "pending") {
+          pendingCount++;
+        }
+        // Sum payouts for approved requests that have been paid
+        if (status === "approved" && hasPaidLog(logs) && request.payoutAmount) {
+          totalPaidOut += request.payoutAmount;
+        }
+      }
+    }
 
     // GLOBAL: Approved today (count 'approved' process logs from today)
     const today = new Date();
@@ -379,9 +396,9 @@ export class DatabaseStorage implements IStorage {
     const avgResult = avgResults[0];
 
     return {
-      pendingCount: Number(pendingCount) || 0,
+      pendingCount,
       approvedToday: Number(approvedToday) || 0,
-      totalPaidOut: Number(paidResult?.total) || 0,
+      totalPaidOut,
       averageProcessingHours: Math.round(Number(avgResult?.avg) || 0),
     };
   }

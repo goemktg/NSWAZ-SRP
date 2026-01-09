@@ -598,13 +598,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid status" });
       }
 
-      const reviewerName = user.mainCharacterName;
-      const request = await storage.reviewSrpRequest(id, reviewerName, status, reviewerNote, payoutAmount);
-      
-      if (!request) {
+      // Check if request exists
+      const existingRequest = await storage.getSrpRequest(id);
+      if (!existingRequest) {
         return res.status(404).json({ message: "Request not found" });
       }
 
+      const reviewerName = user.mainCharacterName;
+      await storage.addProcessLog(id, status, reviewerName, reviewerNote, payoutAmount);
+      
+      // Get updated request
+      const request = await storage.getSrpRequest(id);
       res.json(request);
     } catch (error) {
       console.error("Error reviewing request:", error);

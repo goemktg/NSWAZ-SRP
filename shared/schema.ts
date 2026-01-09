@@ -55,11 +55,9 @@ export const srpRequests = pgTable("srp_requests", {
   isSpecialRole: integer("is_special_role").notNull().default(0),
   lossDescription: text("loss_description"),
   fleetId: varchar("fleet_id"),
-  status: srpStatusEnum("status").notNull().default("pending"),
   payoutAmount: integer("payout_amount"),
 }, (table) => [
   index("idx_srp_requests_seat_user_id").on(table.seatUserId),
-  index("idx_srp_requests_status").on(table.status),
   index("idx_srp_requests_victim_character").on(table.victimCharacterId),
   uniqueIndex("idx_srp_requests_killmail_id_unique").on(table.killmailId),
 ]);
@@ -106,7 +104,6 @@ export const insertSrpRequestSchema = createInsertSchema(srpRequests, {
   id: true, 
   seatUserId: true,
   payoutAmount: true,
-  status: true,
 });
 
 export const insertSrpProcessLogSchema = createInsertSchema(srpProcessLog).omit({ 
@@ -193,8 +190,13 @@ export type SrpCalculateResponse = {
   };
 };
 
+// SRP status type derived from process log
+// Note: "paid" is an event, not a status - approved requests remain "approved" after payment
+export type SrpStatus = "pending" | "approved" | "denied" | "processing";
+
 // Extended types for frontend display
 export type SrpRequestWithDetails = SrpRequest & {
+  status: SrpStatus;
   shipData?: ShipData;
   pilotName?: string;
   fleet?: Fleet;

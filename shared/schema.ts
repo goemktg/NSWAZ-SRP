@@ -10,7 +10,7 @@ export * from "./models/auth";
 export const userRoleEnum = pgEnum("user_role", ["member", "fc", "admin"]);
 export const srpStatusEnum = pgEnum("srp_status", ["pending", "approved", "denied", "processing"]);
 export const operationTypeEnum = pgEnum("operation_type", ["solo", "fleet"]);
-export const srpProcessTypeEnum = pgEnum("srp_process_type", ["created", "approve", "deny", "pay", "updated"]);
+export const srpProcessTypeEnum = pgEnum("srp_process_type", ["created", "approve", "deny", "pay"]);
 
 // User roles table - maps SeAT user ID to role
 export const userRoles = pgTable("user_roles", {

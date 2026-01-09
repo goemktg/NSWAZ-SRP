@@ -6,6 +6,7 @@ import { insertSrpRequestSchema, srpCalculateSchema, fleetFormSchema, type SrpCa
 import { z } from "zod";
 import { shipCatalogService } from "./services/shipCatalog";
 import { srpLimitsService } from "./services/srpLimits";
+import { seatApiService, resolveCharacterNames } from "./services/seatApi";
 import { requireRole } from "./middleware/requireRole";
 
 // SRP Policy constants
@@ -615,6 +616,54 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error reviewing request:", error);
       res.status(500).json({ message: "Failed to review request" });
+    }
+  });
+
+  // Payment summary - Admin only
+  // Returns approved requests grouped by main character with total payout
+  app.get("/api/payment/summary", isAuthenticated, requireRole("fc"), async (req: Request, res) => {
+    try {
+      const groupedRequests = await storage.getApprovedRequestsGroupedBySeatUserId();
+      
+      if (groupedRequests.length === 0) {
+        return res.json([]);
+      }
+
+      // Get main character IDs from SeAT for each seatUserId
+      const seatUserToMainCharId = new Map<number, number>();
+      for (const group of groupedRequests) {
+        const userInfo = await seatApiService.getUserById(group.seatUserId);
+        if (userInfo?.main_character_id) {
+          seatUserToMainCharId.set(group.seatUserId, userInfo.main_character_id);
+        }
+      }
+
+      // Resolve all main character names via ESI
+      const mainCharIds = Array.from(seatUserToMainCharId.values());
+      const charNameMap = await resolveCharacterNames(mainCharIds);
+
+      // Build response
+      const result = groupedRequests.map(group => {
+        const mainCharId = seatUserToMainCharId.get(group.seatUserId);
+        const mainCharName = mainCharId ? charNameMap.get(mainCharId) : null;
+        
+        return {
+          seatUserId: group.seatUserId,
+          mainCharacterId: mainCharId || null,
+          mainCharacterName: mainCharName || `Unknown (SeAT ID: ${group.seatUserId})`,
+          totalPayout: group.totalPayout,
+          requestCount: group.requestCount,
+          requestIds: group.requestIds,
+        };
+      });
+
+      // Sort by total payout descending
+      result.sort((a, b) => b.totalPayout - a.totalPayout);
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error getting payment summary:", error);
+      res.status(500).json({ message: "Failed to get payment summary" });
     }
   });
 

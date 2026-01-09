@@ -70,6 +70,9 @@ export interface IStorage {
 
   // Stats
   getDashboardStats(seatUserId: number): Promise<DashboardStats>;
+
+  // Payment management
+  getApprovedRequestsGroupedBySeatUserId(): Promise<Array<{ seatUserId: number; totalPayout: number; requestCount: number; requestIds: string[] }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -404,6 +407,43 @@ export class DatabaseStorage implements IStorage {
       totalPaidOut,
       averageProcessingHours: Math.round(Number(avgResult?.avg) || 0),
     };
+  }
+
+  // Payment management - get approved requests grouped by seatUserId
+  async getApprovedRequestsGroupedBySeatUserId(): Promise<Array<{ seatUserId: number; totalPayout: number; requestCount: number; requestIds: string[] }>> {
+    // Get all requests with their process logs
+    const allRequests = await db.select().from(srpRequests);
+    const allLogs = await db.select().from(srpProcessLog).orderBy(desc(srpProcessLog.occurredAt));
+
+    // Build logs map
+    const logsMap = new Map<string, SrpProcessLog[]>();
+    for (const log of allLogs) {
+      if (!logsMap.has(log.srpRequestId)) {
+        logsMap.set(log.srpRequestId, []);
+      }
+      logsMap.get(log.srpRequestId)!.push(log);
+    }
+
+    // Group approved requests by seatUserId
+    const userPayouts = new Map<number, { totalPayout: number; requestCount: number; requestIds: string[] }>();
+
+    for (const request of allRequests) {
+      const logs = logsMap.get(request.id) || [];
+      const status = deriveStatusFromLogs(logs);
+
+      if (status === "approved" && request.payoutAmount) {
+        const existing = userPayouts.get(request.seatUserId) || { totalPayout: 0, requestCount: 0, requestIds: [] };
+        existing.totalPayout += request.payoutAmount;
+        existing.requestCount += 1;
+        existing.requestIds.push(request.id);
+        userPayouts.set(request.seatUserId, existing);
+      }
+    }
+
+    return Array.from(userPayouts.entries()).map(([seatUserId, data]) => ({
+      seatUserId,
+      ...data,
+    }));
   }
 }
 

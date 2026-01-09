@@ -121,3 +121,33 @@ export class SeatApiService {
 }
 
 export const seatApiService = new SeatApiService();
+
+// ESI character name resolution
+export async function resolveCharacterNames(characterIds: number[]): Promise<Map<number, string>> {
+  const nameMap = new Map<number, string>();
+  if (characterIds.length === 0) return nameMap;
+
+  try {
+    const response = await fetch("https://esi.evetech.net/latest/universe/names/?datasource=tranquility", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(characterIds),
+    });
+
+    if (!response.ok) {
+      console.error("ESI universe/names error:", response.status);
+      return nameMap;
+    }
+
+    const results: Array<{ id: number; name: string; category: string }> = await response.json();
+    for (const result of results) {
+      if (result.category === "character") {
+        nameMap.set(result.id, result.name);
+      }
+    }
+  } catch (error) {
+    console.error("ESI universe/names fetch error:", error);
+  }
+
+  return nameMap;
+}

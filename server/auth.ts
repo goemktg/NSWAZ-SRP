@@ -29,9 +29,6 @@ interface EveCharacterInfo {
 declare module "express-session" {
   interface SessionData {
     user?: SessionUserData;
-    accessToken?: string;
-    refreshToken?: string;
-    tokenExpiry?: number;
     oauthState?: string;
   }
 }
@@ -82,31 +79,6 @@ async function exchangeCodeForToken(code: string, redirectUri: string): Promise<
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Token exchange failed: ${error}`);
-  }
-
-  return response.json();
-}
-
-async function refreshAccessToken(refreshToken: string): Promise<EveTokenResponse> {
-  const clientId = process.env.EVE_CLIENT_ID!;
-  const clientSecret = process.env.EVE_CLIENT_SECRET!;
-  
-  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  
-  const response = await fetch(EVE_SSO_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${basicAuth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error("Token refresh failed");
   }
 
   return response.json();
@@ -212,7 +184,7 @@ interface ProcessLoginResult {
   userData?: SessionUserData;
 }
 
-async function processLogin(characterId: number): Promise<ProcessLoginResult> {
+async function processLogin(req: Request, characterId: number): Promise<ProcessLoginResult> {
   // Fetch user data from SeAT
   const userData = await fetchUserDataFromSeat(characterId);
   
@@ -235,26 +207,11 @@ async function processLogin(characterId: number): Promise<ProcessLoginResult> {
     }
   }
 
-  return { success: true, userData };
-}
-
-function setupSessionAfterLogin(
-  req: Request,
-  userData: SessionUserData,
-  tokens?: { access_token: string; refresh_token: string; expires_in: number }
-): void {
+  // Setup session
   req.session.user = userData;
-  if (tokens) {
-    req.session.accessToken = tokens.access_token;
-    req.session.refreshToken = tokens.refresh_token;
-    req.session.tokenExpiry = Date.now() + tokens.expires_in * 1000;
-  } else {
-    // Dev bypass: set dummy token data with long expiry
-    req.session.accessToken = "dev_bypass_token";
-    req.session.refreshToken = "dev_bypass_refresh";
-    req.session.tokenExpiry = Date.now() + 7 * 24 * 60 * 60 * 1000; // 1 week
-  }
   console.log(`User logged in: seatUserId=${userData.seatUserId}, characterName=${userData.mainCharacterName}`);
+
+  return { success: true, userData };
 }
 
 export async function setupAuth(app: Express) {
@@ -303,15 +260,12 @@ export async function setupAuth(app: Express) {
       const tokens = await exchangeCodeForToken(code, redirectUri);
       const characterInfo = await getCharacterInfo(tokens.access_token);
 
-      // Process login (fetch from SeAT + check restrictions)
-      const result = await processLogin(characterInfo.CharacterID);
+      // Process login (fetch from SeAT + check restrictions + setup session)
+      const result = await processLogin(req, characterInfo.CharacterID);
       
-      if (!result.success || !result.userData) {
+      if (!result.success) {
         return res.redirect(`/?error=${result.error}`);
       }
-
-      // Setup session with tokens
-      setupSessionAfterLogin(req, result.userData, tokens);
 
       res.redirect("/");
     } catch (error) {
@@ -337,17 +291,14 @@ export async function setupAuth(app: Express) {
 
         console.log(`[dev-login] Attempting dev login with characterId: ${charId}`);
 
-        // Process login (fetch from SeAT + check restrictions) - same logic as regular SSO
-        const result = await processLogin(charId);
+        // Process login (fetch from SeAT + check restrictions + setup session) - same as regular SSO
+        const result = await processLogin(req, charId);
         
-        if (!result.success || !result.userData) {
+        if (!result.success) {
           return res.redirect(`/?error=${result.error}`);
         }
 
-        // Setup session without real tokens (dev bypass)
-        setupSessionAfterLogin(req, result.userData);
-
-        console.log(`[dev-login] Dev login successful for ${result.userData.mainCharacterName}`);
+        console.log(`[dev-login] Dev login successful for ${result.userData?.mainCharacterName}`);
         res.redirect("/");
       } catch (error) {
         console.error("Dev login error:", error);
@@ -368,36 +319,11 @@ export async function setupAuth(app: Express) {
 
 }
 
-export const isAuthenticated: RequestHandler = async (req: Request, res: Response, next) => {
+export const isAuthenticated: RequestHandler = (req: Request, res: Response, next) => {
   if (!req.session.user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-
-  const now = Date.now();
-  const tokenExpiry = req.session.tokenExpiry || 0;
-
-  if (now < tokenExpiry) {
-    return next();
-  }
-
-  const refreshToken = req.session.refreshToken;
-  if (!refreshToken) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-
-  try {
-    const tokens = await refreshAccessToken(refreshToken);
-    
-    req.session.accessToken = tokens.access_token;
-    req.session.refreshToken = tokens.refresh_token;
-    req.session.tokenExpiry = Date.now() + tokens.expires_in * 1000;
-
-    return next();
-  } catch (error) {
-    console.error("Token refresh failed:", error);
-    return res.status(401).json({ message: "Unauthorized" });
-  }
+  return next();
 };
 
 export function registerAuthRoutes(app: Express): void {

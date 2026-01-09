@@ -41,12 +41,12 @@ export default function ShipTypes() {
 
   const parseVersionToDate = (version: string): Date | null => {
     // Handle "2025-12-21" format
-    const dashMatch = version.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const dashMatch = version.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (dashMatch) {
       return new Date(parseInt(dashMatch[1]), parseInt(dashMatch[2]) - 1, parseInt(dashMatch[3]));
     }
-    // Handle "20250707" format
-    const numMatch = version.match(/^(\d{4})(\d{2})(\d{2})$/);
+    // Handle "20250707" or "sde-20250707-TRANQUILITY" format
+    const numMatch = version.match(/(\d{4})(\d{2})(\d{2})/);
     if (numMatch) {
       return new Date(parseInt(numMatch[1]), parseInt(numMatch[2]) - 1, parseInt(numMatch[3]));
     }

@@ -151,7 +151,7 @@ export default function MyRequests() {
                               {formatIsk(request.payoutAmount)}
                             </span>
                             {request.status === "approved" && (
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-sky-600 dark:text-sky-400 border-sky-300 dark:border-sky-700">
                                 예정
                               </Badge>
                             )}

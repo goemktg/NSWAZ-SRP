@@ -25,6 +25,7 @@ function getStatusVariant(status: string): "default" | "destructive" | "secondar
     case "approved": return "default";
     case "denied": return "destructive";
     case "processing": return "secondary";
+    case "paid": return "secondary";
     default: return "outline";
   }
 }
@@ -35,8 +36,16 @@ function getStatusLabel(status: string): string {
     case "denied": return "거부됨";
     case "processing": return "처리 중";
     case "pending": return "대기 중";
+    case "paid": return "지급됨";
     default: return status;
   }
+}
+
+function getStatusClassName(status: string): string {
+  if (status === "paid") {
+    return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800";
+  }
+  return "";
 }
 
 function formatDate(date: string | Date | null): string {
@@ -159,7 +168,7 @@ export default function MyRequests() {
                         ) : <span className="text-muted-foreground">-</span>}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusVariant(request.status)}>
+                        <Badge variant={getStatusVariant(request.status)} className={getStatusClassName(request.status)}>
                           {getStatusLabel(request.status)}
                         </Badge>
                       </TableCell>

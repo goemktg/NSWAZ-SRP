@@ -212,7 +212,10 @@ interface ProcessLoginResult {
   userData?: SessionUserData;
 }
 
-async function processLoginAfterCharacterFetch(userData: SessionUserData | null): Promise<ProcessLoginResult> {
+async function processLogin(characterId: number): Promise<ProcessLoginResult> {
+  // Fetch user data from SeAT
+  const userData = await fetchUserDataFromSeat(characterId);
+  
   if (!userData) {
     return { success: false, error: "seat_user_not_found" };
   }
@@ -300,11 +303,8 @@ export async function setupAuth(app: Express) {
       const tokens = await exchangeCodeForToken(code, redirectUri);
       const characterInfo = await getCharacterInfo(tokens.access_token);
 
-      // Fetch user data from SeAT
-      const userData = await fetchUserDataFromSeat(characterInfo.CharacterID);
-      
-      // Process login (check restrictions, etc.)
-      const result = await processLoginAfterCharacterFetch(userData);
+      // Process login (fetch from SeAT + check restrictions)
+      const result = await processLogin(characterInfo.CharacterID);
       
       if (!result.success || !result.userData) {
         return res.redirect(`/?error=${result.error}`);
@@ -337,11 +337,8 @@ export async function setupAuth(app: Express) {
 
         console.log(`[dev-login] Attempting dev login with characterId: ${charId}`);
 
-        // Fetch user data from SeAT (same as regular SSO flow)
-        const userData = await fetchUserDataFromSeat(charId);
-        
-        // Process login (check restrictions, etc.) - same logic as regular SSO
-        const result = await processLoginAfterCharacterFetch(userData);
+        // Process login (fetch from SeAT + check restrictions) - same logic as regular SSO
+        const result = await processLogin(charId);
         
         if (!result.success || !result.userData) {
           return res.redirect(`/?error=${result.error}`);

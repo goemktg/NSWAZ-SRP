@@ -667,7 +667,7 @@ export async function registerRoutes(
     }
   });
 
-  // Mark requests as paid - Admin only (atomic transaction)
+  // Mark requests as paid - Admin only (atomic transaction with conflict check)
   app.post("/api/payment/mark-paid", isAuthenticated, requireRole("admin"), async (req: Request, res) => {
     try {
       const user = req.session.user;
@@ -681,9 +681,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "requestIds must be a non-empty array" });
       }
 
-      await storage.markRequestsAsPaid(requestIds, user.mainCharacterName);
+      const result = await storage.markRequestsAsPaid(requestIds, user.mainCharacterName);
       
-      res.json({ success: true, markedCount: requestIds.length });
+      res.json({ success: true, ...result });
     } catch (error) {
       console.error("Error marking requests as paid:", error);
       res.status(500).json({ message: "Failed to mark requests as paid" });

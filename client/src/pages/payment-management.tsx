@@ -49,16 +49,24 @@ export default function PaymentManagement() {
   const markPaidMutation = useMutation({
     mutationFn: async (requestIds: string[]) => {
       const response = await apiRequest("POST", "/api/payment/mark-paid", { requestIds });
-      return response.json();
+      return response.json() as Promise<{ success: boolean; markedCount: number; skippedCount: number }>;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/payment/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/srp-requests"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      toast({
-        title: "지급 완료",
-        description: `${variables.length}건의 요청이 지급 완료로 변경되었습니다.`,
-      });
+      
+      if (data.skippedCount > 0) {
+        toast({
+          title: "지급 처리 완료",
+          description: `${data.markedCount}건 지급 완료, ${data.skippedCount}건은 이미 처리됨 (중복 방지)`,
+        });
+      } else {
+        toast({
+          title: "지급 완료",
+          description: `${data.markedCount}건의 요청이 지급 완료로 변경되었습니다.`,
+        });
+      }
       setProcessingId(null);
     },
     onError: () => {

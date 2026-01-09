@@ -446,20 +446,40 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  // Mark multiple requests as paid atomically
-  async markRequestsAsPaid(requestIds: string[], byMainChar: string): Promise<void> {
+  // Mark multiple requests as paid atomically with conflict check
+  async markRequestsAsPaid(requestIds: string[], byMainChar: string): Promise<{ markedCount: number; skippedCount: number }> {
+    let markedCount = 0;
+    let skippedCount = 0;
+
     await db.transaction(async (tx) => {
       for (const requestId of requestIds) {
-        await tx.insert(srpProcessLog).values({
-          id: crypto.randomUUID(),
-          srpRequestId: requestId,
-          processType: "pay",
-          occurredAt: new Date(),
-          byMainChar,
-          note: null,
-        });
+        // Check current status by getting latest process log
+        const logs = await tx
+          .select()
+          .from(srpProcessLog)
+          .where(eq(srpProcessLog.srpRequestId, requestId))
+          .orderBy(desc(srpProcessLog.occurredAt));
+        
+        const currentStatus = deriveStatusFromLogs(logs);
+        
+        // Only mark as paid if still in "approved" status
+        if (currentStatus === "approved") {
+          await tx.insert(srpProcessLog).values({
+            id: crypto.randomUUID(),
+            srpRequestId: requestId,
+            processType: "pay",
+            occurredAt: new Date(),
+            byMainChar,
+            note: null,
+          });
+          markedCount++;
+        } else {
+          skippedCount++;
+        }
       }
     });
+
+    return { markedCount, skippedCount };
   }
 }
 

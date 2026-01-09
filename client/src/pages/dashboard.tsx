@@ -197,7 +197,10 @@ export default function Dashboard() {
                           {request.shipData?.typeName || "알 수 없는 함선"}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {request.createdAt && formatTimeAgo(request.createdAt)}
+                          {(() => {
+                            const createdLog = request.processLogs?.find(log => log.processType === "created");
+                            return createdLog?.occurredAt ? formatTimeAgo(createdLog.occurredAt) : null;
+                          })()}
                         </p>
                       </div>
                     </div>
@@ -206,7 +209,7 @@ export default function Dashboard() {
                       <Badge variant={getStatusVariant(request.status)}>
                         {request.status === "approved" ? "승인됨" : 
                          request.status === "denied" ? "거부됨" : 
-                         request.status === "processing" ? "처리 중" : "대기 중"}
+                         request.status === "paid" ? "지급됨" : "대기 중"}
                       </Badge>
                     </div>
                   </div>

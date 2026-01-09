@@ -282,7 +282,7 @@ export default function AllRequests() {
                   {filteredRequests.map((request) => (
                     <TableRow key={request.id} data-testid={`row-request-${request.id}`}>
                       <TableCell className="font-mono text-sm">
-                        {formatDate(request.createdAt)}
+                        {formatDate(request.processLogs?.find(log => log.processType === "created")?.occurredAt ?? null)}
                       </TableCell>
                       <TableCell className="font-medium">
                         {request.pilotName || "알 수 없음"}

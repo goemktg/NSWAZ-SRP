@@ -116,7 +116,7 @@ export default function MyRequests() {
                   {requests.map((request) => (
                     <TableRow key={request.id} data-testid={`row-request-${request.id}`}>
                       <TableCell className="font-mono text-sm">
-                        {formatDate(request.createdAt)}
+                        {formatDate(request.processLogs?.find(log => log.processType === "created")?.occurredAt ?? null)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">

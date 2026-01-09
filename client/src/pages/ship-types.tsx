@@ -39,6 +39,34 @@ export default function ShipTypes() {
     queryKey: ["/api/ships/catalog/info"],
   });
 
+  const parseVersionToDate = (version: string): Date | null => {
+    // Handle "2025-12-21" format
+    const dashMatch = version.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dashMatch) {
+      return new Date(parseInt(dashMatch[1]), parseInt(dashMatch[2]) - 1, parseInt(dashMatch[3]));
+    }
+    // Handle "20250707" format
+    const numMatch = version.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (numMatch) {
+      return new Date(parseInt(numMatch[1]), parseInt(numMatch[2]) - 1, parseInt(numMatch[3]));
+    }
+    return null;
+  };
+
+  const compareVersions = (current: string, latest: string): "up-to-date" | "needs-update" | "unknown" => {
+    if (current === latest) return "up-to-date";
+    
+    const currentDate = parseVersionToDate(current);
+    const latestDate = parseVersionToDate(latest);
+    
+    if (currentDate && latestDate) {
+      return currentDate >= latestDate ? "up-to-date" : "needs-update";
+    }
+    
+    // Fallback to string comparison
+    return current >= latest ? "up-to-date" : "needs-update";
+  };
+
   const checkLatestVersion = async () => {
     setIsCheckingVersion(true);
     setVersionCheckError(null);
@@ -54,8 +82,15 @@ export default function ShipTypes() {
     }
   };
 
-  const isUpToDate = catalogInfo?.version && latestVersion && catalogInfo.version === latestVersion;
-  const needsUpdate = catalogInfo?.version && latestVersion && catalogInfo.version !== latestVersion;
+  useEffect(() => {
+    checkLatestVersion();
+  }, []);
+
+  const versionStatus = catalogInfo?.version && latestVersion 
+    ? compareVersions(catalogInfo.version, latestVersion) 
+    : null;
+  const isUpToDate = versionStatus === "up-to-date";
+  const needsUpdate = versionStatus === "needs-update";
 
   const groups = useMemo(() => {
     if (!ships) return [];

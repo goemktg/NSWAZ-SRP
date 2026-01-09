@@ -55,6 +55,7 @@ function getStatusVariant(status: string): "default" | "destructive" | "secondar
     case "approved": return "default";
     case "denied": return "destructive";
     case "processing": return "secondary";
+    case "paid": return "secondary";
     default: return "outline";
   }
 }
@@ -65,8 +66,16 @@ function getStatusLabel(status: string): string {
     case "denied": return "거부됨";
     case "processing": return "처리 중";
     case "pending": return "대기 중";
+    case "paid": return "지급됨";
     default: return status;
   }
+}
+
+function getStatusClassName(status: string): string {
+  if (status === "paid") {
+    return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800";
+  }
+  return "";
 }
 
 function formatDate(date: string | Date | null): string {
@@ -122,7 +131,7 @@ export default function AllRequests() {
       payout?: number;
     }) => {
       return apiRequest("PATCH", `/api/srp-requests/${id}/review`, {
-        status: action === "approve" ? "approved" : "denied",
+        status: action,
         reviewerNote: note,
         payoutAmount: action === "approve" ? payout : undefined,
       });
@@ -204,10 +213,35 @@ export default function AllRequests() {
 
   const handleReview = () => {
     if (!reviewDialog.request || !reviewDialog.action) return;
+    
+    let finalNote = reviewNote;
+    
+    if (reviewDialog.action === "approve" && calculatedPayout) {
+      const { baseValue, operationMultiplier, finalAmount, maxPayout, isSpecialRole, isSpecialShipClass } = calculatedPayout.breakdown;
+      const operationType = reviewDialog.request.operationType;
+      
+      let calculationParts: string[] = [];
+      
+      if (operationType === "fleet") {
+        calculationParts.push(isSpecialRole ? "플릿 + 특수롤 (100%)" : "플릿 (50%)");
+      } else {
+        calculationParts.push(isSpecialShipClass ? "솔로잉 + 지원함급 (100%)" : "솔로잉 (25%)");
+      }
+      
+      const calculatedAmount = baseValue * operationMultiplier;
+      if (finalAmount < calculatedAmount && maxPayout < calculatedAmount) {
+        const reductionPercent = Math.round((1 - finalAmount / calculatedAmount) * 100);
+        calculationParts.push(`함급 제한 -${reductionPercent}%`);
+      }
+      
+      const calculationNote = calculationParts.join(" ");
+      finalNote = reviewNote ? `${calculationNote}\n${reviewNote}` : calculationNote;
+    }
+    
     reviewMutation.mutate({
       id: reviewDialog.request.id,
       action: reviewDialog.action,
-      note: reviewNote,
+      note: finalNote,
       payout: reviewDialog.action === "approve" ? payoutAmount : undefined,
     });
   };
@@ -282,7 +316,7 @@ export default function AllRequests() {
                   {filteredRequests.map((request) => (
                     <TableRow key={request.id} data-testid={`row-request-${request.id}`}>
                       <TableCell className="font-mono text-sm">
-                        {formatDate(request.createdAt)}
+                        {formatDate(request.processLogs?.find(log => log.processType === "created")?.occurredAt ?? null)}
                       </TableCell>
                       <TableCell className="font-medium">
                         {request.pilotName || "알 수 없음"}
@@ -318,15 +352,24 @@ export default function AllRequests() {
                       <TableCell className="text-right font-mono">
                         {formatIsk(request.iskAmount)}
                       </TableCell>
-                      <TableCell className="text-right font-mono">
+                      <TableCell className="text-right">
                         {request.payoutAmount ? (
-                          <span className="text-green-600 dark:text-green-400">{formatIsk(request.payoutAmount)}</span>
+                          <div className="flex items-center justify-end gap-2">
+                            <span className={`font-mono ${request.status === "paid" ? "text-green-600 dark:text-green-400" : ""}`}>
+                              {formatIsk(request.payoutAmount)}
+                            </span>
+                            {request.status === "approved" && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-sky-600 dark:text-sky-400 border-sky-300 dark:border-sky-700">
+                                예정
+                              </Badge>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusVariant(request.status)}>
+                        <Badge variant={getStatusVariant(request.status)} className={getStatusClassName(request.status)}>
                           {getStatusLabel(request.status)}
                         </Badge>
                       </TableCell>

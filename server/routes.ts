@@ -6,6 +6,7 @@ import { insertSrpRequestSchema, srpCalculateSchema, fleetFormSchema, type SrpCa
 import { z } from "zod";
 import { shipCatalogService } from "./services/shipCatalog";
 import { srpLimitsService } from "./services/srpLimits";
+import { seatApiService, resolveCharacterNames } from "./services/seatApi";
 import { requireRole } from "./middleware/requireRole";
 
 // SRP Policy constants
@@ -572,7 +573,7 @@ export async function registerRoutes(
         }
       }
       
-      const request = await storage.createSrpRequest(user.seatUserId, validated);
+      const request = await storage.createSrpRequest(user.seatUserId, user.mainCharacterName, validated);
       res.status(201).json(request);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -594,21 +595,98 @@ export async function registerRoutes(
       const { id } = req.params;
       const { status, reviewerNote, payoutAmount } = req.body;
 
-      if (!["approved", "denied", "processing"].includes(status)) {
-        return res.status(400).json({ message: "Invalid status" });
+      console.log("Review request received:", { status, reviewerNote, payoutAmount });
+
+      if (!["approve", "deny"].includes(status)) {
+        return res.status(400).json({ message: `Invalid status: ${status}` });
       }
 
-      const reviewerName = user.mainCharacterName;
-      const request = await storage.reviewSrpRequest(id, reviewerName, status, reviewerNote, payoutAmount);
-      
-      if (!request) {
+      // Check if request exists
+      const existingRequest = await storage.getSrpRequest(id);
+      if (!existingRequest) {
         return res.status(404).json({ message: "Request not found" });
       }
 
+      const reviewerName = user.mainCharacterName;
+      await storage.addProcessLog(id, status, reviewerName, reviewerNote, payoutAmount);
+      
+      // Get updated request
+      const request = await storage.getSrpRequest(id);
       res.json(request);
     } catch (error) {
       console.error("Error reviewing request:", error);
       res.status(500).json({ message: "Failed to review request" });
+    }
+  });
+
+  // Payment summary - Admin only
+  // Returns approved requests grouped by main character with total payout
+  app.get("/api/payment/summary", isAuthenticated, requireRole("fc"), async (req: Request, res) => {
+    try {
+      const groupedRequests = await storage.getApprovedRequestsGroupedBySeatUserId();
+      
+      if (groupedRequests.length === 0) {
+        return res.json([]);
+      }
+
+      // Get main character IDs from SeAT for each seatUserId
+      const seatUserToMainCharId = new Map<number, number>();
+      for (const group of groupedRequests) {
+        const userInfo = await seatApiService.getUserById(group.seatUserId);
+        if (userInfo?.main_character_id) {
+          seatUserToMainCharId.set(group.seatUserId, userInfo.main_character_id);
+        }
+      }
+
+      // Resolve all main character names via ESI
+      const mainCharIds = Array.from(seatUserToMainCharId.values());
+      const charNameMap = await resolveCharacterNames(mainCharIds);
+
+      // Build response
+      const result = groupedRequests.map(group => {
+        const mainCharId = seatUserToMainCharId.get(group.seatUserId);
+        const mainCharName = mainCharId ? charNameMap.get(mainCharId) : null;
+        
+        return {
+          seatUserId: group.seatUserId,
+          mainCharacterId: mainCharId || null,
+          mainCharacterName: mainCharName || `Unknown (SeAT ID: ${group.seatUserId})`,
+          totalPayout: group.totalPayout,
+          requestCount: group.requestCount,
+          requestIds: group.requestIds,
+        };
+      });
+
+      // Sort by total payout descending
+      result.sort((a, b) => b.totalPayout - a.totalPayout);
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error getting payment summary:", error);
+      res.status(500).json({ message: "Failed to get payment summary" });
+    }
+  });
+
+  // Mark requests as paid - Admin only (atomic transaction with conflict check)
+  app.post("/api/payment/mark-paid", isAuthenticated, requireRole("admin"), async (req: Request, res) => {
+    try {
+      const user = req.session.user;
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { requestIds } = req.body;
+      
+      if (!Array.isArray(requestIds) || requestIds.length === 0) {
+        return res.status(400).json({ message: "requestIds must be a non-empty array" });
+      }
+
+      const result = await storage.markRequestsAsPaid(requestIds, user.mainCharacterName);
+      
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("Error marking requests as paid:", error);
+      res.status(500).json({ message: "Failed to mark requests as paid" });
     }
   });
 

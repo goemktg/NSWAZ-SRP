@@ -29,7 +29,26 @@ function getStatusVariant(status: string) {
     case "approved": return "default";
     case "denied": return "destructive";
     case "processing": return "secondary";
+    case "paid": return "secondary";
     default: return "outline";
+  }
+}
+
+function getStatusClassName(status: string): string {
+  if (status === "paid") {
+    return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800";
+  }
+  return "";
+}
+
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case "approved": return "승인됨";
+    case "denied": return "거부됨";
+    case "processing": return "처리 중";
+    case "pending": return "대기 중";
+    case "paid": return "지급됨";
+    default: return status;
   }
 }
 
@@ -197,16 +216,17 @@ export default function Dashboard() {
                           {request.shipData?.typeName || "알 수 없는 함선"}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {request.createdAt && formatTimeAgo(request.createdAt)}
+                          {(() => {
+                            const createdLog = request.processLogs?.find(log => log.processType === "created");
+                            return createdLog?.occurredAt ? formatTimeAgo(createdLog.occurredAt) : null;
+                          })()}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-mono text-sm">{formatIsk(request.iskAmount)}</span>
-                      <Badge variant={getStatusVariant(request.status)}>
-                        {request.status === "approved" ? "승인됨" : 
-                         request.status === "denied" ? "거부됨" : 
-                         request.status === "processing" ? "처리 중" : "대기 중"}
+                      <Badge variant={getStatusVariant(request.status)} className={getStatusClassName(request.status)}>
+                        {getStatusLabel(request.status)}
                       </Badge>
                     </div>
                   </div>

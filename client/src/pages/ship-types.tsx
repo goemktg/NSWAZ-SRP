@@ -1,9 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Rocket, Search } from "lucide-react";
+import { Rocket, Search, RefreshCw, CheckCircle, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -25,6 +27,9 @@ import type { ShipData } from "@shared/schema";
 export default function ShipTypes() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [isCheckingVersion, setIsCheckingVersion] = useState(false);
+  const [versionCheckError, setVersionCheckError] = useState<string | null>(null);
 
   const { data: ships, isLoading } = useQuery<ShipData[]>({
     queryKey: ["/api/ships"],
@@ -33,6 +38,59 @@ export default function ShipTypes() {
   const { data: catalogInfo } = useQuery<{ version: string; totalShips: number; isLoaded: boolean }>({
     queryKey: ["/api/ships/catalog/info"],
   });
+
+  const parseVersionToDate = (version: string): Date | null => {
+    // Handle "2025-12-21" format
+    const dashMatch = version.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (dashMatch) {
+      return new Date(parseInt(dashMatch[1]), parseInt(dashMatch[2]) - 1, parseInt(dashMatch[3]));
+    }
+    // Handle "20250707" or "sde-20250707-TRANQUILITY" format
+    const numMatch = version.match(/(\d{4})(\d{2})(\d{2})/);
+    if (numMatch) {
+      return new Date(parseInt(numMatch[1]), parseInt(numMatch[2]) - 1, parseInt(numMatch[3]));
+    }
+    return null;
+  };
+
+  const compareVersions = (current: string, latest: string): "up-to-date" | "needs-update" | "unknown" => {
+    if (current === latest) return "up-to-date";
+    
+    const currentDate = parseVersionToDate(current);
+    const latestDate = parseVersionToDate(latest);
+    
+    if (currentDate && latestDate) {
+      return currentDate >= latestDate ? "up-to-date" : "needs-update";
+    }
+    
+    // Fallback to string comparison
+    return current >= latest ? "up-to-date" : "needs-update";
+  };
+
+  const checkLatestVersion = async () => {
+    setIsCheckingVersion(true);
+    setVersionCheckError(null);
+    try {
+      const response = await fetch("https://raw.githubusercontent.com/eveseat/resources/master/sde.json");
+      if (!response.ok) throw new Error("Failed to fetch");
+      const data = await response.json();
+      setLatestVersion(data.version || null);
+    } catch {
+      setVersionCheckError("버전 확인 실패");
+    } finally {
+      setIsCheckingVersion(false);
+    }
+  };
+
+  useEffect(() => {
+    checkLatestVersion();
+  }, []);
+
+  const versionStatus = catalogInfo?.version && latestVersion 
+    ? compareVersions(catalogInfo.version, latestVersion) 
+    : null;
+  const isUpToDate = versionStatus === "up-to-date";
+  const needsUpdate = versionStatus === "needs-update";
 
   const groups = useMemo(() => {
     if (!ships) return [];
@@ -79,11 +137,52 @@ export default function ShipTypes() {
                 함선 카탈로그
               </CardTitle>
               {catalogInfo && (
-                <CardDescription>
-                  버전: {catalogInfo.version} | 총 {catalogInfo.totalShips}개 함선
+                <CardDescription className="flex items-center gap-2 flex-wrap">
+                  <span>버전: {catalogInfo.version}</span>
+                  <span>|</span>
+                  <span>총 {catalogInfo.totalShips}개 함선</span>
+                  {isUpToDate && (
+                    <Badge variant="outline" className="text-green-600 dark:text-green-400 border-green-300 dark:border-green-700">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      최신
+                    </Badge>
+                  )}
+                  {needsUpdate && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          업데이트 필요 ({latestVersion})
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        최신 버전: {latestVersion}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {versionCheckError && (
+                    <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-700">
+                      {versionCheckError}
+                    </Badge>
+                  )}
                 </CardDescription>
               )}
             </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={checkLatestVersion}
+                  disabled={isCheckingVersion}
+                  data-testid="button-check-version"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isCheckingVersion ? "animate-spin" : ""}`} />
+                  버전 확인
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>GitHub에서 최신 SDE 버전 확인</TooltipContent>
+            </Tooltip>
           </div>
         </CardHeader>
         <CardContent>

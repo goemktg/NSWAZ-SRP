@@ -25,6 +25,7 @@ function getStatusVariant(status: string): "default" | "destructive" | "secondar
     case "approved": return "default";
     case "denied": return "destructive";
     case "processing": return "secondary";
+    case "paid": return "secondary";
     default: return "outline";
   }
 }
@@ -35,8 +36,16 @@ function getStatusLabel(status: string): string {
     case "denied": return "거부됨";
     case "processing": return "처리 중";
     case "pending": return "대기 중";
+    case "paid": return "지급됨";
     default: return status;
   }
+}
+
+function getStatusClassName(status: string): string {
+  if (status === "paid") {
+    return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800";
+  }
+  return "";
 }
 
 function formatDate(date: string | Date | null): string {
@@ -107,7 +116,7 @@ export default function MyRequests() {
                     <TableHead>캐릭터</TableHead>
                     <TableHead>유형</TableHead>
                     <TableHead className="text-right">로스 금액</TableHead>
-                    <TableHead className="text-right">지급액</TableHead>
+                    <TableHead className="text-right">지급 금액</TableHead>
                     <TableHead>상태</TableHead>
                     <TableHead className="text-right">작업</TableHead>
                   </TableRow>
@@ -116,7 +125,7 @@ export default function MyRequests() {
                   {requests.map((request) => (
                     <TableRow key={request.id} data-testid={`row-request-${request.id}`}>
                       <TableCell className="font-mono text-sm">
-                        {formatDate(request.createdAt)}
+                        {formatDate(request.processLogs?.find(log => log.processType === "created")?.occurredAt ?? null)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -144,11 +153,22 @@ export default function MyRequests() {
                       <TableCell className="text-right font-mono">
                         {formatIsk(request.iskAmount)}
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {request.payoutAmount ? formatIsk(request.payoutAmount) : "-"}
+                      <TableCell className="text-right">
+                        {request.payoutAmount ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <span className={`font-mono ${request.status === "paid" ? "text-green-600 dark:text-green-400" : ""}`}>
+                              {formatIsk(request.payoutAmount)}
+                            </span>
+                            {request.status === "approved" && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-sky-600 dark:text-sky-400 border-sky-300 dark:border-sky-700">
+                                예정
+                              </Badge>
+                            )}
+                          </div>
+                        ) : <span className="text-muted-foreground">-</span>}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusVariant(request.status)}>
+                        <Badge variant={getStatusVariant(request.status)} className={getStatusClassName(request.status)}>
                           {getStatusLabel(request.status)}
                         </Badge>
                       </TableCell>

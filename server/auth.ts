@@ -29,9 +29,6 @@ interface EveCharacterInfo {
 declare module "express-session" {
   interface SessionData {
     user?: SessionUserData;
-    accessToken?: string;
-    refreshToken?: string;
-    tokenExpiry?: number;
     oauthState?: string;
   }
 }
@@ -82,31 +79,6 @@ async function exchangeCodeForToken(code: string, redirectUri: string): Promise<
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Token exchange failed: ${error}`);
-  }
-
-  return response.json();
-}
-
-async function refreshAccessToken(refreshToken: string): Promise<EveTokenResponse> {
-  const clientId = process.env.EVE_CLIENT_ID!;
-  const clientSecret = process.env.EVE_CLIENT_SECRET!;
-  
-  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  
-  const response = await fetch(EVE_SSO_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${basicAuth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error("Token refresh failed");
   }
 
   return response.json();
@@ -206,6 +178,42 @@ async function fetchUserDataFromSeat(characterId: number): Promise<SessionUserDa
   }
 }
 
+interface ProcessLoginResult {
+  success: boolean;
+  error?: string;
+  userData?: SessionUserData;
+}
+
+async function processLogin(req: Request, characterId: number): Promise<ProcessLoginResult> {
+  // Fetch user data from SeAT
+  const userData = await fetchUserDataFromSeat(characterId);
+  
+  if (!userData) {
+    return { success: false, error: "seat_user_not_found" };
+  }
+
+  // Check corp/alliance restrictions
+  const allowedCorpIds = process.env.ALLOWED_CORP_IDS?.split(",").map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) || [];
+  const allowedAllianceIds = process.env.ALLOWED_ALLIANCE_IDS?.split(",").map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) || [];
+  
+  const hasRestrictions = allowedCorpIds.length > 0 || allowedAllianceIds.length > 0;
+  if (hasRestrictions) {
+    const isAllowedCorp = allowedCorpIds.length > 0 && userData.mainCharacterCorporationId && allowedCorpIds.includes(userData.mainCharacterCorporationId);
+    const isAllowedAlliance = allowedAllianceIds.length > 0 && userData.mainCharacterAllianceId && allowedAllianceIds.includes(userData.mainCharacterAllianceId);
+    
+    if (!isAllowedCorp && !isAllowedAlliance) {
+      console.log(`Access denied for ${userData.mainCharacterName}: corp=${userData.mainCharacterCorporationId}, alliance=${userData.mainCharacterAllianceId}`);
+      return { success: false, error: "access_denied" };
+    }
+  }
+
+  // Setup session
+  req.session.user = userData;
+  console.log(`User logged in: seatUserId=${userData.seatUserId}, characterName=${userData.mainCharacterName}`);
+
+  return { success: true, userData };
+}
+
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
@@ -252,34 +260,12 @@ export async function setupAuth(app: Express) {
       const tokens = await exchangeCodeForToken(code, redirectUri);
       const characterInfo = await getCharacterInfo(tokens.access_token);
 
-      // Fetch user data from SeAT and store in session
-      const userData = await fetchUserDataFromSeat(characterInfo.CharacterID);
+      // Process login (fetch from SeAT + check restrictions + setup session)
+      const result = await processLogin(req, characterInfo.CharacterID);
       
-      if (!userData) {
-        return res.redirect("/?error=seat_user_not_found");
+      if (!result.success) {
+        return res.redirect(`/?error=${result.error}`);
       }
-
-      // Check corp/alliance restrictions
-      const allowedCorpIds = process.env.ALLOWED_CORP_IDS?.split(",").map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) || [];
-      const allowedAllianceIds = process.env.ALLOWED_ALLIANCE_IDS?.split(",").map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) || [];
-      
-      const hasRestrictions = allowedCorpIds.length > 0 || allowedAllianceIds.length > 0;
-      if (hasRestrictions) {
-        const isAllowedCorp = allowedCorpIds.length > 0 && userData.mainCharacterCorporationId && allowedCorpIds.includes(userData.mainCharacterCorporationId);
-        const isAllowedAlliance = allowedAllianceIds.length > 0 && userData.mainCharacterAllianceId && allowedAllianceIds.includes(userData.mainCharacterAllianceId);
-        
-        if (!isAllowedCorp && !isAllowedAlliance) {
-          console.log(`Access denied for ${userData.mainCharacterName}: corp=${userData.mainCharacterCorporationId}, alliance=${userData.mainCharacterAllianceId}`);
-          return res.redirect("/?error=access_denied");
-        }
-      }
-
-      req.session.user = userData;
-      req.session.accessToken = tokens.access_token;
-      req.session.refreshToken = tokens.refresh_token;
-      req.session.tokenExpiry = Date.now() + tokens.expires_in * 1000;
-
-      console.log(`User logged in: seatUserId=${userData.seatUserId}, characterName=${userData.mainCharacterName}`);
 
       res.redirect("/");
     } catch (error) {
@@ -287,6 +273,39 @@ export async function setupAuth(app: Express) {
       res.redirect("/?error=auth_failed");
     }
   });
+
+  // Development mode SSO bypass
+  if (process.env.NODE_ENV === "development") {
+    app.get("/api/auth/dev-login", async (req: Request, res: Response) => {
+      try {
+        const { characterId } = req.query;
+        
+        if (!characterId || typeof characterId !== "string") {
+          return res.status(400).json({ message: "characterId query parameter required" });
+        }
+
+        const charId = parseInt(characterId, 10);
+        if (isNaN(charId)) {
+          return res.status(400).json({ message: "Invalid characterId" });
+        }
+
+        console.log(`[dev-login] Attempting dev login with characterId: ${charId}`);
+
+        // Process login (fetch from SeAT + check restrictions + setup session) - same as regular SSO
+        const result = await processLogin(req, charId);
+        
+        if (!result.success) {
+          return res.redirect(`/?error=${result.error}`);
+        }
+
+        console.log(`[dev-login] Dev login successful for ${result.userData?.mainCharacterName}`);
+        res.redirect("/");
+      } catch (error) {
+        console.error("Dev login error:", error);
+        res.redirect("/?error=dev_auth_failed");
+      }
+    });
+  }
 
   // Logout route
   app.get("/api/logout", (req: Request, res: Response) => {
@@ -300,36 +319,11 @@ export async function setupAuth(app: Express) {
 
 }
 
-export const isAuthenticated: RequestHandler = async (req: Request, res: Response, next) => {
+export const isAuthenticated: RequestHandler = (req: Request, res: Response, next) => {
   if (!req.session.user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-
-  const now = Date.now();
-  const tokenExpiry = req.session.tokenExpiry || 0;
-
-  if (now < tokenExpiry) {
-    return next();
-  }
-
-  const refreshToken = req.session.refreshToken;
-  if (!refreshToken) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-
-  try {
-    const tokens = await refreshAccessToken(refreshToken);
-    
-    req.session.accessToken = tokens.access_token;
-    req.session.refreshToken = tokens.refresh_token;
-    req.session.tokenExpiry = Date.now() + tokens.expires_in * 1000;
-
-    return next();
-  } catch (error) {
-    console.error("Token refresh failed:", error);
-    return res.status(401).json({ message: "Unauthorized" });
-  }
+  return next();
 };
 
 export function registerAuthRoutes(app: Express): void {

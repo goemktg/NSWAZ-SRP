@@ -7,7 +7,8 @@ import {
   Settings,
   Shield,
   Rocket,
-  Users
+  Users,
+  Wallet
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const fcItems = [
 
 const adminItems = [
   { title: "함선 유형 관리", url: "/ship-types", icon: Settings },
+  { title: "지급 관리", url: "/payment-management", icon: Wallet },
 ];
 
 export function AppSidebar() {

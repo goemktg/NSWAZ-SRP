@@ -4,7 +4,7 @@
 
 This is a Ship Replacement Program (SRP) management system for the Nisuwa Cartel alliance in EVE Online. The application allows alliance members to submit SRP requests for ships lost during fleet operations, and enables administrators and fleet commanders to review, approve, or deny those requests.
 
-The system features a dashboard with statistics, request submission forms, request tracking, and administrative tools for managing ship types and processing reimbursements.
+The system features a dashboard with statistics, request submission forms, request tracking, administrative tools for managing ship types, and payment management for tracking approved payouts by main character.
 
 ## User Preferences
 
@@ -49,6 +49,7 @@ The system features a dashboard with statistics, request submission forms, reque
 - `user_roles` - Role assignments by seatUserId (member, fc, admin)
 - `fleets` - Fleet operations created by FC/admin users (references createdBySeatUserId)
 - `srp_requests` - SRP request submissions with status tracking (references seatUserId for ownership)
+- `srp_process_log` - Audit log tracking all SRP request state changes with timestamps and actor names. Process types: created (pending), approve (approved), deny (denied), pay (paid). Status is derived from the latest process log entry.
 
 ### Role-Based Access Control
 - **member**: Can submit requests and view their own requests

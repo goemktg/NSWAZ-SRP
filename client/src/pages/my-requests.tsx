@@ -107,7 +107,7 @@ export default function MyRequests() {
                     <TableHead>캐릭터</TableHead>
                     <TableHead>유형</TableHead>
                     <TableHead className="text-right">로스 금액</TableHead>
-                    <TableHead className="text-right">지급액</TableHead>
+                    <TableHead className="text-right">지급 금액</TableHead>
                     <TableHead>상태</TableHead>
                     <TableHead className="text-right">작업</TableHead>
                   </TableRow>
@@ -145,7 +145,12 @@ export default function MyRequests() {
                         {formatIsk(request.iskAmount)}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {request.payoutAmount ? formatIsk(request.payoutAmount) : "-"}
+                        {request.payoutAmount ? (
+                          <span className={request.status === "paid" ? "text-green-600 dark:text-green-400" : ""}>
+                            {formatIsk(request.payoutAmount)}
+                            {request.status === "approved" && <span className="text-muted-foreground text-xs ml-1">(예정)</span>}
+                          </span>
+                        ) : "-"}
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusVariant(request.status)}>

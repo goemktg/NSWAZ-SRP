@@ -345,7 +345,10 @@ export default function AllRequests() {
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {request.payoutAmount ? (
-                          <span className="text-green-600 dark:text-green-400">{formatIsk(request.payoutAmount)}</span>
+                          <span className={request.status === "paid" ? "text-green-600 dark:text-green-400" : ""}>
+                            {formatIsk(request.payoutAmount)}
+                            {request.status === "approved" && <span className="text-muted-foreground text-xs ml-1">(예정)</span>}
+                          </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

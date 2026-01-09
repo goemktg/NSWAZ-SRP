@@ -122,47 +122,6 @@ export default function Landing() {
                   className="h-auto"
                 />
               </a>
-
-              {isDev && (
-                <Dialog open={devDialogOpen} onOpenChange={setDevDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className="gap-2 bg-yellow-500/20 border-yellow-500/50 text-yellow-300 hover:bg-yellow-500/30"
-                      data-testid="button-dev-login"
-                    >
-                      <FlaskConical className="h-4 w-4" />
-                      Test Login
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-xs">
-                    <DialogHeader>
-                      <DialogTitle>Select Test Role</DialogTitle>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-2">
-                      {(Object.keys(DEV_TEST_CHARACTERS) as Array<keyof typeof DEV_TEST_CHARACTERS>).map((role) => (
-                        <Button
-                          key={role}
-                          variant="outline"
-                          className="justify-start gap-2"
-                          onClick={() => {
-                            window.location.href = `/api/auth/dev-login?characterId=${DEV_TEST_CHARACTERS[role].id}`;
-                          }}
-                          data-testid={`button-dev-login-${role}`}
-                        >
-                          <img
-                            src={`https://images.evetech.net/characters/${DEV_TEST_CHARACTERS[role].id}/portrait?size=32`}
-                            alt={DEV_TEST_CHARACTERS[role].name}
-                            className="h-6 w-6 rounded"
-                          />
-                          <span className="capitalize">{role}</span>
-                        </Button>
-                      ))}
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
             </div>
           </div>
         </main>
@@ -174,6 +133,46 @@ export default function Landing() {
         </footer>
       </div>
 
+      {isDev && (
+        <Dialog open={devDialogOpen} onOpenChange={setDevDialogOpen}>
+          <DialogTrigger asChild>
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="fixed bottom-4 right-4 gap-2 bg-yellow-500/20 border-yellow-500/50 text-yellow-300 hover:bg-yellow-500/30 z-50"
+              data-testid="button-dev-login"
+            >
+              <FlaskConical className="h-4 w-4" />
+              Dev Login
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-xs">
+            <DialogHeader>
+              <DialogTitle>Select Test Role</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              {(Object.keys(DEV_TEST_CHARACTERS) as Array<keyof typeof DEV_TEST_CHARACTERS>).map((role) => (
+                <Button
+                  key={role}
+                  variant="outline"
+                  className="justify-start gap-2"
+                  onClick={() => {
+                    window.location.href = `/api/auth/dev-login?characterId=${DEV_TEST_CHARACTERS[role].id}`;
+                  }}
+                  data-testid={`button-dev-login-${role}`}
+                >
+                  <img
+                    src={`https://images.evetech.net/characters/${DEV_TEST_CHARACTERS[role].id}/portrait?size=32`}
+                    alt={DEV_TEST_CHARACTERS[role].name}
+                    className="h-6 w-6 rounded"
+                  />
+                  <span className="capitalize">{role}</span>
+                </Button>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

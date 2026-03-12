@@ -1,0 +1,58 @@
+{
+    "servers": {
+        "arxiv-mcp-server": {
+            "type": "stdio",
+            "command": "cmd.exe",
+            "args": [
+                "/c",
+                "uv",
+                "tool",
+                "run",
+                "arxiv-mcp-server",
+                "--storage-path",
+                "${workspaceFolder}/documents/reference/papers"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        "context7": {
+            "type": "stdio",
+            "command": "cmd.exe",
+            "args": [
+                "/c",
+                "npx",
+                "-y",
+                "@upstash/context7-mcp@latest"
+            ]
+        },
+        "memory": {
+            "command": "cmd.exe",
+            "args": [
+                "/c",
+                "uv",
+                "tool",
+                "run",
+                "--from",
+                "mcp-memory-service",
+                "memory",
+                "server"
+            ],
+            "env": {
+            "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
+            "MCP_MEMORY_SQLITE_PATH": "${workspaceFolder}/.copilot-memory/memory.db",
+            "CUDA_VISIBLE_DEVICES": "",
+            "MCP_MEMORY_USE_ONNX": "1"
+            },
+            "type": "stdio"
+        },
+        "sequentialthinking": {
+            "type": "stdio",
+            "command": "cmd.exe",
+            "args": [
+                "/c",
+                "npx",
+                "-y",
+                "@modelcontextprotocol/server-sequential-thinking@latest"
+            ]
+        }
+    }
+}

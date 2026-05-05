@@ -26,6 +26,16 @@ interface EveCharacterInfo {
   IntellectualProperty: string;
 }
 
+/** Claims present in an EVE SSO v2 JWT access token. */
+interface EveSsoJwtClaims {
+  sub: string;                  // "CHARACTER:EVE:<id>"
+  name: string;                 // character name
+  exp: number;                  // unix seconds
+  iss: string;                  // issuer
+  scp?: string[] | string;      // granted scopes (array or space-separated string)
+  owner?: string;               // character owner hash
+}
+
 declare module "express-session" {
   interface SessionData {
     user?: SessionUserData;
@@ -77,25 +87,81 @@ async function exchangeCodeForToken(code: string, redirectUri: string): Promise<
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Token exchange failed: ${error}`);
+    const body = await response.text().catch(() => "<unreadable>");
+    console.error("[auth] Token exchange failed", {
+      url: EVE_SSO_TOKEN_URL,
+      status: response.status,
+      statusText: response.statusText,
+      body,
+    });
+    throw new Error(`Token exchange failed: HTTP ${response.status} ${response.statusText} — ${body}`);
   }
 
   return response.json();
 }
 
-async function getCharacterInfo(accessToken: string): Promise<EveCharacterInfo> {
-  const response = await fetch("https://esi.evetech.net/verify/", {
-    headers: {
-      "Authorization": `Bearer ${accessToken}`,
-    },
-  });
+const VALID_EVE_ISSUERS = new Set(["login.eveonline.com", "https://login.eveonline.com"]);
 
-  if (!response.ok) {
-    throw new Error("Failed to verify character");
+function getCharacterInfo(accessToken: string): EveCharacterInfo {
+  // Decode the JWT payload locally — no extra HTTP round-trip required.
+  // Signature verification is intentionally skipped; we already received the token
+  // via a TLS-secured token exchange with EVE SSO, which is sufficient trust.
+  const parts = accessToken.split(".");
+  if (parts.length !== 3) {
+    throw new Error(`Invalid JWT: expected 3 dot-separated parts, got ${parts.length}`);
   }
 
-  return response.json();
+  let claims: EveSsoJwtClaims;
+  try {
+    // Base64url → Base64 → UTF-8 JSON
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = Buffer.from(base64, "base64").toString("utf8");
+    claims = JSON.parse(json) as EveSsoJwtClaims;
+  } catch (err) {
+    console.error("[auth] JWT payload decode failed", {
+      error: err instanceof Error ? err.message : String(err),
+      tokenPrefix: accessToken.substring(0, 20) + "...",
+    });
+    throw new Error("Failed to decode JWT payload");
+  }
+
+  // Validate issuer
+  if (!VALID_EVE_ISSUERS.has(claims.iss)) {
+    console.error("[auth] Unexpected JWT issuer", { iss: claims.iss });
+    throw new Error(`Invalid JWT issuer: ${claims.iss}`);
+  }
+
+  // Validate expiry
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (!claims.exp || claims.exp <= nowSeconds) {
+    console.error("[auth] JWT is expired or missing exp", { exp: claims.exp, now: nowSeconds });
+    throw new Error(`JWT is expired: exp=${claims.exp}, now=${nowSeconds}`);
+  }
+
+  // Extract CharacterID from sub formatted as "CHARACTER:EVE:<id>"
+  const subParts = (claims.sub ?? "").split(":");
+  if (subParts.length < 3 || subParts[0] !== "CHARACTER" || subParts[1] !== "EVE") {
+    console.error("[auth] Unexpected JWT sub format", { sub: claims.sub });
+    throw new Error(`Unexpected JWT sub format: ${claims.sub}`);
+  }
+  const characterId = parseInt(subParts[2], 10);
+  if (isNaN(characterId)) {
+    throw new Error(`Could not parse CharacterID from sub: ${claims.sub}`);
+  }
+
+  // Normalise scopes: EVE may send an array or a single space-separated string
+  const scp = claims.scp;
+  const scopes = Array.isArray(scp) ? scp.join(" ") : (scp ?? "");
+
+  return {
+    CharacterID: characterId,
+    CharacterName: claims.name,
+    ExpiresOn: new Date(claims.exp * 1000).toISOString(),
+    Scopes: scopes,
+    TokenType: "Character",
+    CharacterOwnerHash: claims.owner ?? "",
+    IntellectualProperty: "EVE",
+  };
 }
 
 async function fetchUserDataFromSeat(characterId: number): Promise<SessionUserData | null> {
@@ -108,7 +174,6 @@ async function fetchUserDataFromSeat(characterId: number): Promise<SessionUserDa
       return null;
     }
     console.log(`[auth] sheet`, {
-      characterId: sheet.character_id,
       userId: sheet.user_id,
       corpId: sheet.corporation?.entity_id,
       corpName: sheet.corporation?.name,
@@ -147,7 +212,6 @@ async function fetchUserDataFromSeat(characterId: number): Promise<SessionUserDa
       mainSheet = fetchedMainSheet;
     }
     console.log(`[auth] mainSheet`, {
-      characterId: mainSheet.character_id,
       corpId: mainSheet.corporation?.entity_id,
       corpName: mainSheet.corporation?.name,
       allianceId: mainSheet.alliance?.entity_id,
@@ -193,8 +257,8 @@ async function processLogin(req: Request, characterId: number): Promise<ProcessL
   }
 
   // Check corp/alliance restrictions
-  const allowedCorpIds = process.env.ALLOWED_CORP_IDS?.split(",").map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) || [];
-  const allowedAllianceIds = process.env.ALLOWED_ALLIANCE_IDS?.split(",").map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) || [];
+  const allowedCorpIds = process.env.ALLOWED_CORP_IDS?.split(",").map((id: string) => parseInt(id.trim(), 10)).filter((id: number) => !isNaN(id)) || [];
+  const allowedAllianceIds = process.env.ALLOWED_ALLIANCE_IDS?.split(",").map((id: string) => parseInt(id.trim(), 10)).filter((id: number) => !isNaN(id)) || [];
   
   const hasRestrictions = allowedCorpIds.length > 0 || allowedAllianceIds.length > 0;
   if (hasRestrictions) {
@@ -269,7 +333,17 @@ export async function setupAuth(app: Express) {
 
       res.redirect("/");
     } catch (error) {
-      console.error("EVE SSO callback error:", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("[auth] EVE SSO callback error", {
+        message: err.message,
+        stack: err.stack,
+        requestContext: {
+          method: req.method,
+          path: req.path,
+          state: typeof req.query.state === "string" ? req.query.state : undefined,
+          hasCode: typeof req.query.code === "string",
+        },
+      });
       res.redirect("/?error=auth_failed");
     }
   });

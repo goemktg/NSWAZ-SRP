@@ -24,7 +24,16 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      // react-hook-form ships dist/index.esm.mjs in its "module" field but
+      // that file is missing from the local install; redirect to the CJS build.
+      "react-hook-form": path.resolve(
+        import.meta.dirname,
+        "node_modules/react-hook-form/dist/index.cjs.js",
+      ),
     },
+  },
+  optimizeDeps: {
+    include: ["react-hook-form"],
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
